@@ -16,6 +16,7 @@ from TileStache.Geography import SphericalMercator
 from osgeo import gdal, osr
 
 source_dir = 'source'
+pixel_buffer = 16
 
 #
 # Set up some useful projections.
@@ -145,19 +146,20 @@ def srtm1_datasource(lat, lon):
     #
     return gdal.Open(dem_path, gdal.GA_ReadOnly)
 
-def tile_bounds(coord, sref, buffer=0):
+def tile_bounds(coord, sref, pixels=0):
     """ Retrieve bounding box of a tile coordinate in specified projection.
     
         If provided, buffer by a given number of pixels (assumes 256x256 tiles).
     """
-    gutter = buffer and (float(buffer) / 256) or 0
+    buffer = pixels and (float(pixels) / 256) or 0
     
-    # buffer the tile a bit to add a bit more padding
-    ul = webmerc_proj.coordinateProj(coord.left(gutter).up(gutter))
-    lr = webmerc_proj.coordinateProj(coord.down(1 + gutter).right(1 + gutter))
+    # get upper left and lower right corners with specified padding
+    ul = webmerc_proj.coordinateProj(coord.left(buffer).up(buffer))
+    lr = webmerc_proj.coordinateProj(coord.down(1 + buffer).right(1 + buffer))
     
     cs2cs = osr.CoordinateTransformation(webmerc_sref, sref)
     
+    # "min" and "max" here assume projections with positive north and east.
     xmin, ymax, z = cs2cs.TransformPoint(ul.x, ul.y)
     xmax, ymin, z = cs2cs.TransformPoint(lr.x, lr.y)
     
@@ -166,7 +168,7 @@ def tile_bounds(coord, sref, buffer=0):
 def srtm1_datasources(coord):
     """ Retrieve a list of SRTM1 datasources overlapping the tile coordinate.
     """
-    xmin, ymin, xmax, ymax = tile_bounds(coord, srtm1_sref, 4)
+    xmin, ymin, xmax, ymax = tile_bounds(coord, srtm1_sref, pixel_buffer)
     
     return [srtm1_datasource(lat, lon)
             for (lon, lat)
@@ -178,10 +180,10 @@ if __name__ == '__main__':
 
     #print srtm1_region(37.854525, -121.999741)
     
-    xmin, ymin, xmax, ymax = tile_bounds(coord, webmerc_sref, 4)
+    xmin, ymin, xmax, ymax = tile_bounds(coord, webmerc_sref, pixel_buffer)
     
     driver = gdal.GetDriverByName('GTiff')
-    ds_out = driver.Create('out.tif', 256 + 8, 256 + 8, 1, gdal.GDT_Float32)
+    ds_out = driver.Create('out.tif', 256 + pixel_buffer*2, 256 + pixel_buffer*2, 1, gdal.GDT_Float32)
     
     xform = xmin, ((xmax - xmin) / ds_out.RasterXSize), 0, \
             ymax, 0, ((ymin - ymax) / ds_out.RasterYSize)
@@ -192,7 +194,6 @@ if __name__ == '__main__':
     print ds_out
     
     for ds_in in srtm1_datasources(coord):
-        print 'go...'
         gdal.ReprojectImage(ds_in, ds_out, ds_in.GetProjection(), ds_out.GetProjection(), gdal.GRA_Cubic)
         ds_in.FlushCache()
     
