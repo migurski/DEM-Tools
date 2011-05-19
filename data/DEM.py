@@ -92,7 +92,7 @@ def srtm1_datasource(lat, lon):
     #
     s, host, path, p, q, f = urlparse(url)
     
-    dem_dir = md5(url).hexdigest()[:4]
+    dem_dir = md5(url).hexdigest()[:2]
     dem_dir = join(source_dir, dem_dir)
     
     dem_path = join(dem_dir, basename(path)[:-4])
@@ -133,8 +133,9 @@ def srtm1_datasource(lat, lon):
         #
         # Write the actual DEM
         #
-        dsfile = open(dem_path, 'w')
-        dsfile.write(zipfile.read(zipfile.namelist()[0]))
+        dem_file = open(dem_path, 'w')
+        dem_file.write(zipfile.read(zipfile.namelist()[0]))
+        dem_file.close()
         
         chmod(dem_path, 0666)
     
