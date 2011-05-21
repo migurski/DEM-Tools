@@ -1,10 +1,11 @@
 """ Starting point for DEM retrieval utilities.
 """
 from sys import stderr
-from math import floor
+from math import floor, pi, sin, cos
 from os import unlink, close, write, mkdir, chmod
 from os.path import basename, exists, isdir, join
 from httplib import HTTPConnection
+from itertools import product
 from urlparse import urlparse
 from tempfile import mkstemp
 from zipfile import ZipFile
@@ -14,6 +15,8 @@ from ModestMaps.Core import Coordinate
 from TileStache.Geography import SphericalMercator
 
 from osgeo import gdal, osr
+
+import numpy
 
 source_dir = 'source'
 pixel_buffer = 16
@@ -60,8 +63,8 @@ def srtm1_region(lat, lon):
     
     raise ValueError('Unknown location')
 
-def srtm1_tiles(minlon, minlat, maxlon, maxlat):
-    """ Generate a list of southwest (lon, lat) for 1-degree tiles of SRTM1 data.
+def srtm1_quads(minlon, minlat, maxlon, maxlat):
+    """ Generate a list of southwest (lon, lat) for 1-degree quads of SRTM1 data.
     """
     lon = floor(minlon)
     while lon <= maxlon:
@@ -173,7 +176,7 @@ def srtm1_datasources(coord):
     
     return [srtm1_datasource(lat, lon)
             for (lon, lat)
-            in srtm1_tiles(xmin, ymin, xmax, ymax)]
+            in srtm1_quads(xmin, ymin, xmax, ymax)]
 
 if __name__ == '__main__':
 
@@ -182,20 +185,79 @@ if __name__ == '__main__':
     #print srtm1_region(37.854525, -121.999741)
     
     xmin, ymin, xmax, ymax = tile_bounds(coord, webmerc_sref, pixel_buffer)
+    width, height = 256 + pixel_buffer*2, 256 + pixel_buffer*2
     
     driver = gdal.GetDriverByName('GTiff')
-    ds_out = driver.Create('out.tif', 256 + pixel_buffer*2, 256 + pixel_buffer*2, 1, gdal.GDT_Float32)
+    ds_elevation = driver.Create('elevation.tif', width, height, 1, gdal.GDT_Float32)
     
-    xform = xmin, ((xmax - xmin) / ds_out.RasterXSize), 0, \
-            ymax, 0, ((ymin - ymax) / ds_out.RasterYSize)
+    xres = (xmax - xmin) / ds_elevation.RasterXSize
+    yres = (ymin - ymax) / ds_elevation.RasterYSize
+    xform = xmin, xres, 0, ymax, 0, yres
     
-    ds_out.SetGeoTransform(xform)
-    ds_out.SetProjection(webmerc_sref.ExportToWkt())
+    ds_elevation.SetGeoTransform(xform)
+    ds_elevation.SetProjection(webmerc_sref.ExportToWkt())
     
-    print ds_out
+    print ds_elevation
     
     for ds_in in srtm1_datasources(coord):
-        gdal.ReprojectImage(ds_in, ds_out, ds_in.GetProjection(), ds_out.GetProjection(), gdal.GRA_Cubic)
+        gdal.ReprojectImage(ds_in, ds_elevation, ds_in.GetProjection(), ds_elevation.GetProjection(), gdal.GRA_Cubic)
         ds_in.FlushCache()
     
-    ds_out.FlushCache()
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    
+    cell = ds_elevation.ReadAsArray(0, 0, width, height)
+    
+    ds_elevation.FlushCache()
+    
+    print cell.shape
+    
+    z, scale = 1.0, 1.0
+    
+    window = [z * cell[row:(row + cell.shape[0] - 2), col:(col + cell.shape[1] - 2)]
+              for (row, col)
+              in product(range(3), range(3))]
+    
+    print 'calculating slope and aspect...'
+    
+    x = ((window[0] + window[3] + window[3] + window[6]) \
+       - (window[2] + window[5] + window[5] + window[8])) \
+      / (8.0 * xres * scale);
+    
+    y = ((window[6] + window[7] + window[7] + window[8]) \
+       - (window[0] + window[1] + window[1] + window[2])) \
+      / (8.0 * yres * scale);
+
+    # in radians, from 0 to pi/2
+    slope = pi/2 - numpy.arctan(numpy.sqrt(x*x + y*y))
+    
+    # in radians counterclockwise, from -pi at north back to pi
+    aspect = numpy.arctan2(x, y)
+    
+    #
+    # store slope and aspect mapped into signed 16-bit int range to save space
+    #
+    slope_data = (32767 * slope * 2/pi).astype(numpy.int16)
+    ds_slope = driver.Create('slope.tif', width, height, 1, gdal.GDT_Int16)
+    ds_slope.WriteRaster(0, 0, slope.shape[0], slope.shape[1], slope_data.tostring())
+    ds_slope.FlushCache()
+    
+    aspect_data = (32767 * aspect * 1/pi).astype(numpy.int16)
+    ds_aspect = driver.Create('aspect.tif', width, height, 1, gdal.GDT_Int16)
+    ds_aspect.WriteRaster(0, 0, aspect.shape[0], aspect.shape[1], aspect_data.tostring())
+    ds_aspect.FlushCache()
+    
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    
+    print 'calculating shade...'
+    
+    azimuth, altitude = 315.0, 45.0
+    
+    deg2rad = pi / 180.0
+    
+    shaded = sin(altitude * deg2rad) * numpy.sin(slope) \
+           + cos(altitude * deg2rad) * numpy.cos(slope) \
+           * numpy.cos((azimuth - 90.0) * deg2rad - aspect);
+    
+    ds_shaded = driver.Create('shaded.tif', width, height, 1, gdal.GDT_Float32)
+    ds_shaded.WriteRaster(0, 0, shaded.shape[0], shaded.shape[1], shaded.tostring(), buf_type=gdal.GDT_Float32)
+    ds_shaded.FlushCache()
