@@ -237,12 +237,12 @@ if __name__ == '__main__':
     # store slope and aspect mapped into 8-bit range as JPEG to save space
     #
     slope_data = (0xFF * numpy.sin(slope + pi/2)).astype(numpy.uint8)
-    ds_slope = driver.Create('slope.tif', width, height, 1, gdal.GDT_Byte, ['COMPRESS=JPEG', 'JPEG_QUALITY=95'])
+    ds_slope = driver.Create('slope.tif', width, height, 1, gdal.GDT_Byte, ['COMPRESS=JPEG', 'JPEG_QUALITY=90'])
     ds_slope.WriteRaster(0, 0, slope.shape[0], slope.shape[1], slope_data.tostring())
     ds_slope.FlushCache()
     
     aspect_data = (0xFF * (aspect/pi + 1)/2).astype(numpy.uint8)
-    ds_aspect = driver.Create('aspect.tif', width, height, 1, gdal.GDT_Byte, ['COMPRESS=JPEG', 'JPEG_QUALITY=95'])
+    ds_aspect = driver.Create('aspect.tif', width, height, 1, gdal.GDT_Byte, ['COMPRESS=JPEG', 'JPEG_QUALITY=90'])
     ds_aspect.WriteRaster(0, 0, aspect.shape[0], aspect.shape[1], aspect_data.tostring())
     ds_aspect.FlushCache()
     
@@ -282,6 +282,6 @@ if __name__ == '__main__':
            * numpy.cos((azimuth - 90.0) * deg2rad - aspect);
     
     shaded_data = (0xFF * shaded).astype(numpy.uint8)
-    ds_shaded = driver.Create('shaded-j.tif', width, height, 1, gdal.GDT_Byte)
+    ds_shaded = driver.Create('shaded-j90.tif', width, height, 1, gdal.GDT_Byte)
     ds_shaded.WriteRaster(0, 0, shaded.shape[0], shaded.shape[1], shaded_data.tostring(), buf_type=gdal.GDT_Byte)
     ds_shaded.FlushCache()
