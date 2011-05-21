@@ -234,15 +234,15 @@ if __name__ == '__main__':
     aspect = numpy.arctan2(x, y)
     
     #
-    # store slope and aspect mapped into signed 16-bit int range to save space
+    # store slope and aspect mapped into 8-bit range as JPEG to save space
     #
-    slope_data = (32767 * slope * 2/pi).astype(numpy.int16)
-    ds_slope = driver.Create('slope.tif', width, height, 1, gdal.GDT_Int16)
+    slope_data = (0xFF * numpy.sin(slope + pi/2)).astype(numpy.uint8)
+    ds_slope = driver.Create('slope.tif', width, height, 1, gdal.GDT_Byte, ['COMPRESS=JPEG', 'JPEG_QUALITY=95'])
     ds_slope.WriteRaster(0, 0, slope.shape[0], slope.shape[1], slope_data.tostring())
     ds_slope.FlushCache()
     
-    aspect_data = (32767 * aspect * 1/pi).astype(numpy.int16)
-    ds_aspect = driver.Create('aspect.tif', width, height, 1, gdal.GDT_Int16)
+    aspect_data = (0xFF * (aspect/pi + 1)/2).astype(numpy.uint8)
+    ds_aspect = driver.Create('aspect.tif', width, height, 1, gdal.GDT_Byte, ['COMPRESS=JPEG', 'JPEG_QUALITY=95'])
     ds_aspect.WriteRaster(0, 0, aspect.shape[0], aspect.shape[1], aspect_data.tostring())
     ds_aspect.FlushCache()
     
@@ -258,6 +258,30 @@ if __name__ == '__main__':
            + cos(altitude * deg2rad) * numpy.cos(slope) \
            * numpy.cos((azimuth - 90.0) * deg2rad - aspect);
     
-    ds_shaded = driver.Create('shaded.tif', width, height, 1, gdal.GDT_Float32)
-    ds_shaded.WriteRaster(0, 0, shaded.shape[0], shaded.shape[1], shaded.tostring(), buf_type=gdal.GDT_Float32)
+    shaded_data = (0xFF * shaded).astype(numpy.uint8)
+    ds_shaded = driver.Create('shaded.tif', width, height, 1, gdal.GDT_Byte)
+    ds_shaded.WriteRaster(0, 0, shaded.shape[0], shaded.shape[1], shaded_data.tostring(), buf_type=gdal.GDT_Byte)
+    ds_shaded.FlushCache()
+    
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    
+    print 'calculating shade again...'
+    
+    ds_slope = gdal.Open('slope.tif')
+    slope_data = ds_slope.ReadAsArray(0, 0, width, height).astype(numpy.float32)
+    slope = pi/2 - numpy.arcsin(slope_data / 0xFF)
+    
+    ds_aspect = gdal.Open('aspect.tif')
+    aspect_data = ds_aspect.ReadAsArray(0, 0, width, height).astype(numpy.float32)
+    aspect = (2 * aspect_data/0xFF - 1) * pi
+    
+    deg2rad = pi / 180.0
+    
+    shaded = sin(altitude * deg2rad) * numpy.sin(slope) \
+           + cos(altitude * deg2rad) * numpy.cos(slope) \
+           * numpy.cos((azimuth - 90.0) * deg2rad - aspect);
+    
+    shaded_data = (0xFF * shaded).astype(numpy.uint8)
+    ds_shaded = driver.Create('shaded-j.tif', width, height, 1, gdal.GDT_Byte)
+    ds_shaded.WriteRaster(0, 0, shaded.shape[0], shaded.shape[1], shaded_data.tostring(), buf_type=gdal.GDT_Byte)
     ds_shaded.FlushCache()
