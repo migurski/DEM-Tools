@@ -15,6 +15,7 @@ from ModestMaps.Core import Coordinate
 from TileStache.Geography import SphericalMercator
 
 from osgeo import gdal, osr
+from PIL import Image
 
 import numpy
 
@@ -33,6 +34,110 @@ srtm1_sref.ImportFromProj4('+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
 webmerc_proj = SphericalMercator()
 webmerc_sref = osr.SpatialReference()
 webmerc_sref.ImportFromProj4(webmerc_proj.srs)
+
+class Provider:
+    """
+    """
+    def __init__(self, layer):
+        pass
+    
+    def getTypeByExtension(self, ext):
+        if ext.lower() != 'tiff':
+            raise Exception()
+        
+        return 'image/tiff', 'TIFF'
+    
+    def renderArea(self, width, height, srs, xmin, ymin, xmax, ymax, zoom):
+        """
+        """
+        assert srs == webmerc_proj.srs # <-- good enough for now
+        
+        #
+        # Prepare a dataset of the desired extent and projection.
+        #
+        
+        driver = gdal.GetDriverByName('GTiff')
+        ds_elevation = driver.Create('/vsimem/dem-tile', width+2, height+2, 1, gdal.GDT_Float32)
+        
+        xres = (xmax - xmin) / ds_elevation.RasterXSize
+        yres = (ymin - ymax) / ds_elevation.RasterYSize
+
+        xform = xmin, xres, 0, ymax, 0, yres
+        
+        ds_elevation.SetGeoTransform(xform)
+        ds_elevation.SetProjection(webmerc_sref.ExportToWkt())
+        
+        #
+        # Reproject and merge DEM datasources into the destination dataset.
+        #
+        
+        cs2cs = osr.CoordinateTransformation(webmerc_sref, srtm1_sref)
+        
+        minlon, minlat, z = cs2cs.TransformPoint(xmin, ymin)
+        maxlon, maxlat, z = cs2cs.TransformPoint(xmax, ymax)
+        
+        for ds_in in srtm1_datasources(minlon, minlat, maxlon, maxlat):
+            gdal.ReprojectImage(ds_in, ds_elevation, ds_in.GetProjection(), ds_elevation.GetProjection(), gdal.GRA_Cubic)
+            ds_in.FlushCache()
+        
+        elevation = ds_elevation.ReadAsArray()
+        ds_elevation.FlushCache()
+        
+        #
+        # Calculate and save slope and aspect.
+        #
+        
+        slope, aspect = calculate_slope_aspect(elevation, xres, yres)
+        
+        # recalculate resolution because of the 3x3 window
+        xres = (xmax - xmin) / width
+        yres = (ymin - ymax) / height
+
+        webmerc_wkt = webmerc_sref.ExportToWkt()
+        xform = xmin, xres, 0, ymax, 0, yres
+        
+        return SlopeAndAspect(slope, aspect, webmerc_wkt, xform)
+
+class SlopeAndAspect:
+
+    def __init__(self, slope, aspect, wkt, xform):
+        self.slope = slope
+        self.aspect = aspect
+        
+        self.w, self.h = self.slope.shape
+
+        self.wkt = wkt
+        self.xform = xform
+    
+    def save(self, output, format):
+        """
+        """
+        assert format == 'TIFF'
+        
+        try:
+            handle, filename = mkstemp(prefix='slope-aspect-', suffix='.tif')
+            close(handle)
+            
+            driver = gdal.GetDriverByName('GTiff')
+            gtiff_options = ['COMPRESS=JPEG', 'JPEG_QUALITY=95', 'INTERLEAVE=BAND']
+            ds_both = driver.Create(filename, self.w, self.h, 2, gdal.GDT_Byte, gtiff_options)
+            
+            ds_both.SetGeoTransform(self.xform)
+            ds_both.SetProjection(self.wkt)
+            
+            band_slope = ds_both.GetRasterBand(1)
+            band_slope.SetRasterColorInterpretation(gdal.GCI_Undefined)
+            band_slope.WriteRaster(0, 0, self.w, self.h, slope2bytes(self.slope).tostring())
+            
+            band_aspect = ds_both.GetRasterBand(2)
+            band_aspect.SetRasterColorInterpretation(gdal.GCI_Undefined)
+            band_aspect.WriteRaster(0, 0, self.w, self.h, aspect2bytes(self.aspect).tostring())
+            
+            ds_both.FlushCache()
+            output.write(open(filename, 'r').read())
+        
+        finally:
+            unlink(filename)
 
 def srtm1_region(lat, lon):
     """ Return the SRTM1 region number of a given lat, lon.
@@ -61,7 +166,7 @@ def srtm1_region(lat, lon):
     if -15 <= lat and lat < 60 and ((172 <= lon and lon < 180) or (-180 <= lon and lon < -129)):
         return 7
     
-    raise ValueError('Unknown location')
+    raise ValueError('Unknown location: %s, %s' % (lat, lon))
 
 def srtm1_quads(minlon, minlat, maxlon, maxlat):
     """ Generate a list of southwest (lon, lat) for 1-degree quads of SRTM1 data.
@@ -167,14 +272,12 @@ def tile_bounds(coord, sref, buffer=0):
     
     return xmin, ymin, xmax, ymax
 
-def srtm1_datasources(coord):
+def srtm1_datasources(minlon, minlat, maxlon, maxlat):
     """ Retrieve a list of SRTM1 datasources overlapping the tile coordinate.
     """
-    xmin, ymin, xmax, ymax = tile_bounds(coord, srtm1_sref, 0.01)
-    
     return [srtm1_datasource(lat, lon)
             for (lon, lat)
-            in srtm1_quads(xmin, ymin, xmax, ymax)]
+            in srtm1_quads(minlon, minlat, maxlon, maxlat)]
 
 def slope2bytes(slope):
     """ Convert slope from floating point to 8-bit.
@@ -204,48 +307,22 @@ def bytes2aspect(bytes):
     """
     return (2 * bytes.astype(numpy.float32)/0xFF - 1) * pi
 
-if __name__ == '__main__':
-
-    coord = Coordinate(1582, 659, 12)
-
-    xmin, ymin, xmax, ymax = tile_bounds(coord, webmerc_sref, 1./256)
+def calculate_slope_aspect(elevation, xres, yres, z=1.0):
+    """ Return a pair of arrays 2 pixels smaller than the input elevation array.
+    """
+    width, height = elevation.shape[0] - 2, elevation.shape[1] - 2
     
-    driver = gdal.GetDriverByName('GTiff')
-    ds_elevation = driver.Create('/vsimem/dem-tile', 256+2, 256+2, 1, gdal.GDT_Float32)
-    
-    xres = (xmax - xmin) / ds_elevation.RasterXSize
-    yres = (ymin - ymax) / ds_elevation.RasterYSize
-    xform = xmin, xres, 0, ymax, 0, yres
-    
-    ds_elevation.SetGeoTransform(xform)
-    ds_elevation.SetProjection(webmerc_sref.ExportToWkt())
-    
-    for ds_in in srtm1_datasources(coord):
-        gdal.ReprojectImage(ds_in, ds_elevation, ds_in.GetProjection(), ds_elevation.GetProjection(), gdal.GRA_Cubic)
-        ds_in.FlushCache()
-    
-    elevation_data = ds_elevation.ReadAsArray()
-    ds_elevation.FlushCache()
-    
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    
-    print elevation_data.shape
-    
-    z, scale = 1.0, 1.0
-    
-    window = [z * elevation_data[row:(row + 256), col:(col + 256)]
+    window = [z * elevation[row:(row + height), col:(col + width)]
               for (row, col)
               in product(range(3), range(3))]
     
-    print 'calculating slope and aspect...'
-    
     x = ((window[0] + window[3] + window[3] + window[6]) \
        - (window[2] + window[5] + window[5] + window[8])) \
-      / (8.0 * xres * scale);
+      / (8.0 * xres);
     
     y = ((window[6] + window[7] + window[7] + window[8]) \
        - (window[0] + window[1] + window[1] + window[2])) \
-      / (8.0 * yres * scale);
+      / (8.0 * yres);
 
     # in radians, from 0 to pi/2
     slope = pi/2 - numpy.arctan(numpy.sqrt(x*x + y*y))
@@ -253,31 +330,17 @@ if __name__ == '__main__':
     # in radians counterclockwise, from -pi at north back to pi
     aspect = numpy.arctan2(x, y)
     
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    return slope, aspect
 
-    xmin, ymin, xmax, ymax = tile_bounds(coord, webmerc_sref, 0)
+if __name__ == '__main__':
+
+    provider = Provider(None)
+    coord = Coordinate(1582, 659, 12)
     
-    gtiff_options = ['COMPRESS=JPEG', 'JPEG_QUALITY=95', 'INTERLEAVE=BAND']
-    ds_both = driver.Create('both.tif', 256, 256, 2, gdal.GDT_Byte, gtiff_options)
+    xmin, ymin, xmax, ymax = tile_bounds(coord, webmerc_sref)
     
-    xres = (xmax - xmin) / ds_both.RasterXSize
-    yres = (ymin - ymax) / ds_both.RasterYSize
-    xform = xmin, xres, 0, ymax, 0, yres
-    
-    print xform
-    
-    ds_both.SetGeoTransform(xform)
-    ds_both.SetProjection(webmerc_sref.ExportToWkt())
-    
-    band_slope = ds_both.GetRasterBand(1)
-    band_slope.SetRasterColorInterpretation(gdal.GCI_Undefined)
-    band_slope.WriteRaster(0, 0, slope.shape[0], slope.shape[1], slope2bytes(slope).tostring())
-    
-    band_aspect = ds_both.GetRasterBand(2)
-    band_aspect.SetRasterColorInterpretation(gdal.GCI_Undefined)
-    band_aspect.WriteRaster(0, 0, aspect.shape[0], aspect.shape[1], aspect2bytes(aspect).tostring())
-    
-    ds_both.FlushCache()
+    image = provider.renderArea(256, 256, webmerc_proj.srs, xmin, ymin, xmax, ymax, coord.zoom)
+    image.save(open('both.tif', 'w'), 'TIFF')
     
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     
@@ -300,6 +363,8 @@ if __name__ == '__main__':
            * numpy.cos((azimuth - 90.0) * deg2rad - aspect);
     
     shaded_data = (0xFF * shaded).astype(numpy.uint8)
+
+    driver = gdal.GetDriverByName('GTiff')
     ds_shaded = driver.Create('shaded-j95.tif', 256, 256, 1, gdal.GDT_Byte)
     ds_shaded.WriteRaster(0, 0, shaded.shape[0], shaded.shape[1], shaded_data.tostring(), buf_type=gdal.GDT_Byte)
     ds_shaded.FlushCache()
