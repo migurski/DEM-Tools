@@ -178,6 +178,34 @@ def srtm1_datasources(coord):
             for (lon, lat)
             in srtm1_quads(xmin, ymin, xmax, ymax)]
 
+def slope2bytes(slope):
+    """ Convert slope from floating point to 8-bit.
+    
+        Slope given in radians, from 0 for sheer face to pi/2 for flat ground.
+    """
+    return (0xFF * numpy.sin(slope + pi/2)).astype(numpy.uint8)
+
+def aspect2bytes(aspect):
+    """ Convert aspect from floating point to 8-bit.
+    
+        Aspect given in radians, counterclockwise from -pi at north back to pi.
+    """
+    return (0xFF * (aspect/pi + 1)/2).astype(numpy.uint8)
+
+def bytes2slope(bytes):
+    """ Convert slope from 8-bit to floating point.
+    
+        Slope returned in radians, from 0 for sheer face to pi/2 for flat ground.
+    """
+    return pi/2 - numpy.arcsin(bytes.astype(numpy.float32) / 0xFF)
+
+def bytes2aspect(bytes):
+    """ Convert aspect from 8-bit to floating point.
+    
+        Aspect returned in radians, counterclockwise from -pi at north back to pi.
+    """
+    return (2 * bytes.astype(numpy.float32)/0xFF - 1) * pi
+
 if __name__ == '__main__':
 
     coord = Coordinate(1582, 659, 12)
@@ -236,15 +264,18 @@ if __name__ == '__main__':
     #
     # store slope and aspect mapped into 8-bit range as JPEG to save space
     #
-    slope_data = (0xFF * numpy.sin(slope + pi/2)).astype(numpy.uint8)
-    ds_slope = driver.Create('slope.tif', width, height, 1, gdal.GDT_Byte, ['COMPRESS=JPEG', 'JPEG_QUALITY=90'])
-    ds_slope.WriteRaster(0, 0, slope.shape[0], slope.shape[1], slope_data.tostring())
-    ds_slope.FlushCache()
+    gtiff_options = ['COMPRESS=JPEG', 'JPEG_QUALITY=90', 'INTERLEAVE=BAND']
+    ds_both = driver.Create('both.tif', width, height, 2, gdal.GDT_Byte, gtiff_options)
     
-    aspect_data = (0xFF * (aspect/pi + 1)/2).astype(numpy.uint8)
-    ds_aspect = driver.Create('aspect.tif', width, height, 1, gdal.GDT_Byte, ['COMPRESS=JPEG', 'JPEG_QUALITY=90'])
-    ds_aspect.WriteRaster(0, 0, aspect.shape[0], aspect.shape[1], aspect_data.tostring())
-    ds_aspect.FlushCache()
+    band_slope = ds_both.GetRasterBand(1)
+    band_slope.SetRasterColorInterpretation(gdal.GCI_Undefined)
+    band_slope.WriteRaster(0, 0, slope.shape[0], slope.shape[1], slope2bytes(slope).tostring())
+    
+    band_aspect = ds_both.GetRasterBand(2)
+    band_aspect.SetRasterColorInterpretation(gdal.GCI_Undefined)
+    band_aspect.WriteRaster(0, 0, aspect.shape[0], aspect.shape[1], aspect2bytes(aspect).tostring())
+    
+    ds_both.FlushCache()
     
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     
@@ -267,13 +298,13 @@ if __name__ == '__main__':
     
     print 'calculating shade again...'
     
-    ds_slope = gdal.Open('slope.tif')
-    slope_data = ds_slope.ReadAsArray(0, 0, width, height).astype(numpy.float32)
-    slope = pi/2 - numpy.arcsin(slope_data / 0xFF)
+    ds_both = gdal.Open('both.tif')
+
+    band_slope = ds_both.GetRasterBand(1)
+    slope = bytes2slope(band_slope.ReadAsArray())
     
-    ds_aspect = gdal.Open('aspect.tif')
-    aspect_data = ds_aspect.ReadAsArray(0, 0, width, height).astype(numpy.float32)
-    aspect = (2 * aspect_data/0xFF - 1) * pi
+    band_aspect = ds_both.GetRasterBand(2)
+    aspect = bytes2aspect(band_aspect.ReadAsArray())
     
     deg2rad = pi / 180.0
     
