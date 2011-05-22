@@ -15,6 +15,8 @@ from PIL import Image
 
 import numpy
 
+# used to prevent clobbering in /vsimem/, see:
+# http://osgeo-org.1803224.n2.nabble.com/gdal-dev-Outputting-to-vsimem-td6221295.html
 vsimem_counter = 1
 
 #
@@ -28,7 +30,10 @@ webmerc_sref = osr.SpatialReference()
 webmerc_sref.ImportFromProj4(webmerc_proj.srs)
 
 class Provider:
-    """
+    """ TileStache provider for generating tiles of DEM slope and aspect data.
+
+        See http://tilestache.org/doc/#custom-providers for information
+        on how the Provider object interacts with TileStache.
     """
     def __init__(self, layer):
         pass
@@ -40,7 +45,7 @@ class Provider:
         return 'image/tiff', 'TIFF'
     
     def renderArea(self, width, height, srs, xmin, ymin, xmax, ymax, zoom):
-        """
+        """ Return an instance of SlopeAndAspect for requested area.
         """
         assert srs == webmerc_proj.srs # <-- good enough for now
         
@@ -52,7 +57,7 @@ class Provider:
         yres = (ymin - ymax) / height
 
         area_wkt = webmerc_sref.ExportToWkt()
-        area_xform = xmin - xres, xres, 0, ymax - yres, 0, yres
+        buffered_xform = xmin - xres, xres, 0, ymax - yres, 0, yres
         
         #
         # Reproject and merge DEM datasources into destination datasets.
@@ -67,7 +72,7 @@ class Provider:
             minlon, minlat, z = cs2cs.TransformPoint(xmin, ymin)
             maxlon, maxlat, z = cs2cs.TransformPoint(xmax, ymax)
             
-            ds_provider = memory_dataset(width+2, height+2, area_wkt, area_xform)
+            ds_provider = memory_dataset(width+2, height+2, area_wkt, buffered_xform)
             
             for ds_in in module.datasources(minlon, minlat, maxlon, maxlat):
                 gdal.ReprojectImage(ds_in, ds_provider, ds_in.GetProjection(), ds_provider.GetProjection(), gdal.GRA_Cubic)
@@ -82,18 +87,21 @@ class Provider:
         
         slope, aspect = calculate_slope_aspect(elevation, xres, yres)
         
-        # recalculate resolution because of the 3x3 window
-        xres = (xmax - xmin) / width
-        yres = (ymin - ymax) / height
-
-        webmerc_wkt = webmerc_sref.ExportToWkt()
-        xform = xmin, xres, 0, ymax, 0, yres
+        tile_xform = xmin, xres, 0, ymax, 0, yres
         
-        return SlopeAndAspect(slope, aspect, webmerc_wkt, xform)
+        return SlopeAndAspect(slope, aspect, area_wkt, tile_xform)
 
 class SlopeAndAspect:
-
+    """ TileStache response object with PIL-like save() and crop() methods.
+    
+        This object knows only how to save two-band 8-bit GeoTIFFs.
+        
+        See http://tilestache.org/doc/#custom-providers for information
+        on how the SlopeAndAspect object interacts with TileStache.
+    """
     def __init__(self, slope, aspect, wkt, xform):
+        """ Instantiate with array of slope and aspect, and minimal geographic information.
+        """
         self.slope = slope
         self.aspect = aspect
         
@@ -103,7 +111,7 @@ class SlopeAndAspect:
         self.xform = xform
     
     def save(self, output, format):
-        """
+        """ Save a two-band GeoTIFF to output file-like object.
         """
         assert format == 'TIFF'
         
@@ -131,9 +139,19 @@ class SlopeAndAspect:
         
         finally:
             unlink(filename)
+    
+    def crop(self, box):
+        """ Returns a rectangular region from the current image.
+        
+            Box is a 4-tuple with left, upper, right, and lower pixels.
+            Not yet implemented!
+        """
+        raise NotImplementedError()
 
 def memory_dataset(width, height, wkt, xform):
-    """
+    """ Return a new in-memory dataset matching the requested geometry.
+    
+        Use global vsimem_counter to prevent them from stepping on one another.
     """
     global vsimem_counter
 
@@ -147,7 +165,10 @@ def memory_dataset(width, height, wkt, xform):
     return dataset
 
 def choose_providers(zoom):
-    """ Return a single
+    """ Return a list of data sources and proportions for given zoom level.
+    
+        Each data source is a module such as SRTM1 or SRTM3, and the proportions
+        must all add up to one. Return list has either one or two items.
     """
     if zoom < SRTM3.ideal_zoom:
         return [(SRTM3, 1)]
@@ -160,23 +181,6 @@ def choose_providers(zoom):
     if SRTM1.ideal_zoom <= zoom:
         return [(SRTM1, 1)]
 
-def tile_bounds(coord, sref, buffer=0):
-    """ Retrieve bounding box of a tile coordinate in specified projection.
-    
-        If provided, buffer by a given number of fractional rows/columns.
-    """
-    # get upper left and lower right corners with specified padding
-    ul = webmerc_proj.coordinateProj(coord.left(buffer).up(buffer))
-    lr = webmerc_proj.coordinateProj(coord.down(1 + buffer).right(1 + buffer))
-    
-    cs2cs = osr.CoordinateTransformation(webmerc_sref, sref)
-    
-    # "min" and "max" here assume projections with positive north and east.
-    xmin, ymax, z = cs2cs.TransformPoint(ul.x, ul.y)
-    xmax, ymin, z = cs2cs.TransformPoint(lr.x, lr.y)
-    
-    return xmin, ymin, xmax, ymax
-
 def slope2bytes(slope):
     """ Convert slope from floating point to 8-bit.
     
@@ -187,7 +191,7 @@ def slope2bytes(slope):
 def aspect2bytes(aspect):
     """ Convert aspect from floating point to 8-bit.
     
-        Aspect given in radians, counterclockwise from -pi at north back to pi.
+        Aspect given in radians, counterclockwise from -pi at north around to pi.
     """
     return (0xFF * (aspect/pi + 1)/2).astype(numpy.uint8)
 
@@ -201,12 +205,19 @@ def bytes2slope(bytes):
 def bytes2aspect(bytes):
     """ Convert aspect from 8-bit to floating point.
     
-        Aspect returned in radians, counterclockwise from -pi at north back to pi.
+        Aspect returned in radians, counterclockwise from -pi at north around to pi.
     """
     return (2 * bytes.astype(numpy.float32)/0xFF - 1) * pi
 
 def calculate_slope_aspect(elevation, xres, yres, z=1.0):
     """ Return a pair of arrays 2 pixels smaller than the input elevation array.
+    
+        Slope is returned in radians, from 0 for sheer face to pi/2 for
+        flat ground. Aspect is returned in radians, counterclockwise from -pi
+        at north around to pi.
+        
+        Logic here is borrowed from hillshade.cpp:
+          http://www.perrygeo.net/wordpress/?p=7
     """
     width, height = elevation.shape[0] - 2, elevation.shape[1] - 2
     
