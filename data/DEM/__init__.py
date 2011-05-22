@@ -5,7 +5,7 @@ from os import unlink, close
 from itertools import product
 from tempfile import mkstemp
 
-import SRTM1, SRTM3
+import NED10m, SRTM1, SRTM3
 
 from ModestMaps.Core import Coordinate
 from TileStache.Geography import SphericalMercator
@@ -173,13 +173,19 @@ def choose_providers(zoom):
     if zoom < SRTM3.ideal_zoom:
         return [(SRTM3, 1)]
 
-    if SRTM3.ideal_zoom <= zoom and zoom < SRTM1.ideal_zoom:
-        difference = SRTM1.ideal_zoom - SRTM3.ideal_zoom
-        proportion = 1. - (zoom - SRTM3.ideal_zoom) / difference
-        return [(SRTM3, proportion), (SRTM1, 1 - proportion)]
+    elif SRTM3.ideal_zoom <= zoom and zoom < SRTM1.ideal_zoom:
+        bottom, top = SRTM3, SRTM1
 
-    if SRTM1.ideal_zoom <= zoom:
-        return [(SRTM1, 1)]
+    elif SRTM1.ideal_zoom <= zoom and zoom < NED10m.ideal_zoom:
+        bottom, top = SRTM1, NED10m
+
+    elif NED10m.ideal_zoom <= zoom:
+        return [(NED10m, 1)]
+
+    difference = top.ideal_zoom - bottom.ideal_zoom
+    proportion = 1. - (zoom - bottom.ideal_zoom) / difference
+
+    return [(bottom, proportion), (top, 1 - proportion)]
 
 def slope2bytes(slope):
     """ Convert slope from floating point to 8-bit.
