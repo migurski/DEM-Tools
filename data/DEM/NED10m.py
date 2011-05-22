@@ -4,10 +4,10 @@ from sys import stderr
 from math import floor, ceil, log
 from os import unlink, close, write, mkdir, chmod
 from os.path import basename, exists, isdir, join
+from ftplib import FTP, error_perm
 from urlparse import urlparse
 from tempfile import mkstemp
 from hashlib import md5
-from ftplib import FTP
 
 from TileStache.Geography import SphericalMercator
 
@@ -58,12 +58,16 @@ def datasource(lat, lon):
     
     local_base = join(local_dir, basename(path)[:-2])
     local_path = local_base + '.flt'
+    local_none = local_base + '.404'
     
     #
     # Check if the file exists locally
     #
     if exists(local_path):
         return gdal.Open(local_path, gdal.GA_ReadOnly)
+
+    if exists(local_none):
+        return None
 
     if not exists(local_dir):
         mkdir(local_dir)
@@ -83,10 +87,15 @@ def datasource(lat, lon):
         remote_path = path[:-2] + ext
         local_path = local_base + ext
         local_file = open(local_path, 'wb')
+        
+        try:
+            conn.retrbinary('RETR ' + remote_path, local_file.write)
+        except error_perm:
+            # permanent error, for example 550 when there's no file
+            print >> open(local_none, 'w'), url
+            return None
     
         print >> stderr, '  ', remote_path, '-->', local_path
-        
-        conn.retrbinary('RETR ' + remote_path, local_file.write)
         
         if ext == '.hdr':
             # GDAL needs some extra hints to understand the raw float data

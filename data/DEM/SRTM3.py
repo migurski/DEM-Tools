@@ -74,12 +74,16 @@ def datasource(lat, lon):
     dem_dir = join(source_dir, dem_dir)
     
     dem_path = join(dem_dir, basename(path)[:-4])
+    dem_none = dem_path[:-4]+'.404'
     
     #
     # Check if the file exists locally
     #
     if exists(dem_path):
         return gdal.Open(dem_path, gdal.GA_ReadOnly)
+
+    if exists(dem_none):
+        return None
 
     if not exists(dem_dir):
         mkdir(dem_dir)
@@ -98,6 +102,7 @@ def datasource(lat, lon):
     
     if resp.status == 404:
         # we're probably outside the coverage area
+        print >> open(dem_none, 'w'), url
         return None
     
     assert resp.status == 200, (resp.status, resp.read())
