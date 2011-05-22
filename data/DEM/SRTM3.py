@@ -15,7 +15,7 @@ from TileStache.Geography import SphericalMercator
 from osgeo import gdal, osr
 
 source_dir = 'source'
-ideal_zoom = log(3600*360 / 256) / log(2) # ~12.3
+ideal_zoom = log(1200*360 / 256) / log(2) # ~10.7
 
 osr.UseExceptions() # <-- otherwise errors will be silent and useless.
 
@@ -23,36 +23,18 @@ sref = osr.SpatialReference()
 sref.ImportFromProj4('+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
 
 def region(lat, lon):
-    """ Return the SRTM1 region number of a given lat, lon.
+    """ Return the SRTM3 region name of a given lat, lon.
     
         Map of regions:
-        http://dds.cr.usgs.gov/srtm/version2_1/SRTM1/Region_definition.jpg
+        http://dds.cr.usgs.gov/srtm/version2_1/Documentation/Continent_def.gif
     """
-    if 38 <= lat and lat < 50 and -125 <= lon and lon < -111:
-        return 1
-    
-    if 38 <= lat and lat < 50 and -111 <= lon and lon < -97:
-        return 2
-    
-    if 38 <= lat and lat < 50 and -97 <= lon and lon < -83:
-        return 3
-    
-    if 28 <= lat and lat < 38 and -123 <= lon and lon < -100:
-        return 4
-    
-    if 25 <= lat and lat < 38 and -100 <= lon and lon < -83:
-        return 5
-    
-    if 17 <= lat and lat < 48 and -83 <= lon and lon < -64:
-        return 6
-    
-    if -15 <= lat and lat < 60 and ((172 <= lon and lon < 180) or (-180 <= lon and lon < -129)):
-        return 7
+    if 15 <= lat and lat < 61 and -170 <= lon and lon < -40:
+        return 'North_America'
     
     raise ValueError('Unknown location: %s, %s' % (lat, lon))
 
 def quads(minlon, minlat, maxlon, maxlat):
-    """ Generate a list of southwest (lon, lat) for 1-degree quads of SRTM1 data.
+    """ Generate a list of southwest (lon, lat) for 1-degree quads of SRTM3 data.
     """
     lon = floor(minlon)
     while lon <= maxlon:
@@ -67,7 +49,7 @@ def quads(minlon, minlat, maxlon, maxlat):
         lon += 1
 
 def datasource(lat, lon):
-    """ Return a gdal datasource for an SRTM1 lat, lon corner.
+    """ Return a gdal datasource for an SRTM3 lat, lon corner.
     
         If it doesn't already exist locally in source_dir, grab a new one.
     """
@@ -80,7 +62,7 @@ def datasource(lat, lon):
         # we're probably outside a known region
         return None
 
-    fmt = 'http://dds.cr.usgs.gov/srtm/version2_1/SRTM1/Region_%02d/N%dW%d.hgt.zip'
+    fmt = 'http://dds.cr.usgs.gov/srtm/version2_1/SRTM3/%s/N%dW%d.hgt.zip'
     url = fmt % (reg, abs(lat), abs(lon))
     
     #
@@ -108,7 +90,7 @@ def datasource(lat, lon):
     #
     # Grab a fresh remote copy
     #
-    print >> stderr, 'Retrieving', url, 'in DEM.SRTM1.datasource().'
+    print >> stderr, 'Retrieving', url, 'in DEM.SRTM3.datasource().'
     
     conn = HTTPConnection(host, 80)
     conn.request('GET', path)
@@ -120,7 +102,7 @@ def datasource(lat, lon):
         #
         # Get the DEM out of the zip file
         #
-        handle, zip_path = mkstemp(prefix='srtm1-', suffix='.zip')
+        handle, zip_path = mkstemp(prefix='srtm3-', suffix='.zip')
         write(handle, resp.read())
         close(handle)
         
@@ -144,7 +126,7 @@ def datasource(lat, lon):
     return gdal.Open(dem_path, gdal.GA_ReadOnly)
 
 def datasources(minlon, minlat, maxlon, maxlat):
-    """ Retrieve a list of SRTM1 datasources overlapping the tile coordinate.
+    """ Retrieve a list of SRTM3 datasources overlapping the tile coordinate.
     """
     lonlats = quads(minlon, minlat, maxlon, maxlat)
     sources = [datasource(lat, lon) for (lon, lat) in lonlats]

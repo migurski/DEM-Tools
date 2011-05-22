@@ -5,7 +5,7 @@ from os import unlink, close
 from itertools import product
 from tempfile import mkstemp
 
-import SRTM1
+import SRTM1, SRTM3
 
 from ModestMaps.Core import Coordinate
 from TileStache.Geography import SphericalMercator
@@ -14,6 +14,8 @@ from osgeo import gdal, osr
 from PIL import Image
 
 import numpy
+
+vsimem_counter = 1
 
 #
 # Set up some useful projections.
@@ -43,35 +45,36 @@ class Provider:
         assert srs == webmerc_proj.srs # <-- good enough for now
         
         #
-        # Prepare a dataset of the desired extent and projection.
+        # Prepare information for datasets of the desired extent and projection.
         #
         
-        driver = gdal.GetDriverByName('GTiff')
-        ds_elevation = driver.Create('/vsimem/dem-tile', width+2, height+2, 1, gdal.GDT_Float32)
-        
-        xres = (xmax - xmin) / ds_elevation.RasterXSize
-        yres = (ymin - ymax) / ds_elevation.RasterYSize
+        xres = (xmax - xmin) / width
+        yres = (ymin - ymax) / height
 
-        xform = xmin, xres, 0, ymax, 0, yres
-        
-        ds_elevation.SetGeoTransform(xform)
-        ds_elevation.SetProjection(webmerc_sref.ExportToWkt())
+        area_wkt = webmerc_sref.ExportToWkt()
+        area_xform = xmin - xres, xres, 0, ymax - yres, 0, yres
         
         #
-        # Reproject and merge DEM datasources into the destination dataset.
+        # Reproject and merge DEM datasources into destination datasets.
         #
         
-        cs2cs = osr.CoordinateTransformation(webmerc_sref, SRTM1.sref)
+        elevation = numpy.zeros((width+2, height+2), numpy.float32)
         
-        minlon, minlat, z = cs2cs.TransformPoint(xmin, ymin)
-        maxlon, maxlat, z = cs2cs.TransformPoint(xmax, ymax)
+        for (module, proportion) in choose_providers(zoom):
         
-        for ds_in in SRTM1.datasources(minlon, minlat, maxlon, maxlat):
-            gdal.ReprojectImage(ds_in, ds_elevation, ds_in.GetProjection(), ds_elevation.GetProjection(), gdal.GRA_Cubic)
-            ds_in.FlushCache()
-        
-        elevation = ds_elevation.ReadAsArray()
-        ds_elevation.FlushCache()
+            cs2cs = osr.CoordinateTransformation(webmerc_sref, module.sref)
+            
+            minlon, minlat, z = cs2cs.TransformPoint(xmin, ymin)
+            maxlon, maxlat, z = cs2cs.TransformPoint(xmax, ymax)
+            
+            ds_provider = memory_dataset(width+2, height+2, area_wkt, area_xform)
+            
+            for ds_in in module.datasources(minlon, minlat, maxlon, maxlat):
+                gdal.ReprojectImage(ds_in, ds_provider, ds_in.GetProjection(), ds_provider.GetProjection(), gdal.GRA_Cubic)
+                ds_in.FlushCache()
+            
+            elevation += ds_provider.ReadAsArray() * proportion
+            ds_provider.FlushCache()
         
         #
         # Calculate and save slope and aspect.
@@ -128,6 +131,34 @@ class SlopeAndAspect:
         
         finally:
             unlink(filename)
+
+def memory_dataset(width, height, wkt, xform):
+    """
+    """
+    global vsimem_counter
+
+    driver = gdal.GetDriverByName('GTiff')
+    dataset = driver.Create('/vsimem/%d.tif' % vsimem_counter, width, height, 1, gdal.GDT_Float32)
+    
+    dataset.SetGeoTransform(xform)
+    dataset.SetProjection(wkt)
+    
+    vsimem_counter += 1
+    return dataset
+
+def choose_providers(zoom):
+    """ Return a single
+    """
+    if zoom < SRTM3.ideal_zoom:
+        return [(SRTM3, 1)]
+
+    if SRTM3.ideal_zoom <= zoom and zoom < SRTM1.ideal_zoom:
+        difference = SRTM1.ideal_zoom - SRTM3.ideal_zoom
+        proportion = 1. - (zoom - SRTM3.ideal_zoom) / difference
+        return [(SRTM3, proportion), (SRTM1, 1 - proportion)]
+
+    if SRTM1.ideal_zoom <= zoom:
+        return [(SRTM1, 1)]
 
 def tile_bounds(coord, sref, buffer=0):
     """ Retrieve bounding box of a tile coordinate in specified projection.
