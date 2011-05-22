@@ -78,7 +78,11 @@ class Provider:
                 gdal.ReprojectImage(ds_in, ds_provider, ds_in.GetProjection(), ds_provider.GetProjection(), gdal.GRA_Cubic)
                 ds_in.FlushCache()
             
-            elevation += ds_provider.ReadAsArray() * proportion
+            if proportion == 1:
+                elevation = ds_provider.ReadAsArray()
+            else:
+                elevation += ds_provider.ReadAsArray() * proportion
+
             ds_provider.FlushCache()
         
         #
@@ -170,20 +174,23 @@ def choose_providers(zoom):
         Each data source is a module such as SRTM1 or SRTM3, and the proportions
         must all add up to one. Return list has either one or two items.
     """
-    if zoom < SRTM3.ideal_zoom:
+    if zoom <= SRTM3.ideal_zoom:
         return [(SRTM3, 1)]
 
-    elif SRTM3.ideal_zoom <= zoom and zoom < SRTM1.ideal_zoom:
+    elif SRTM3.ideal_zoom < zoom and zoom < SRTM1.ideal_zoom:
         bottom, top = SRTM3, SRTM1
 
-    elif SRTM1.ideal_zoom <= zoom and zoom < NED10m.ideal_zoom:
+    elif zoom == SRTM1.ideal_zoom:
+        return [(SRTM1, 1)]
+
+    elif SRTM1.ideal_zoom < zoom and zoom < NED10m.ideal_zoom:
         bottom, top = SRTM1, NED10m
 
-    elif NED10m.ideal_zoom <= zoom:
+    elif zoom >= NED10m.ideal_zoom:
         return [(NED10m, 1)]
 
-    difference = top.ideal_zoom - bottom.ideal_zoom
-    proportion = 1. - (zoom - bottom.ideal_zoom) / difference
+    difference = float(top.ideal_zoom) - float(bottom.ideal_zoom)
+    proportion = 1. - (zoom - float(bottom.ideal_zoom)) / difference
 
     return [(bottom, proportion), (top, 1 - proportion)]
 

@@ -14,7 +14,7 @@ from TileStache.Geography import SphericalMercator
 from osgeo import gdal, osr
 
 source_dir = 'source'
-ideal_zoom = log(3 * 3600*360 / 256) / log(2) # ~13.9
+ideal_zoom = 15 ### log(3 * 3600*360 / 256) / log(2) # ~13.9
 
 osr.UseExceptions() # <-- otherwise errors will be silent and useless.
 
