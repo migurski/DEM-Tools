@@ -96,6 +96,10 @@ def datasource(lat, lon):
     conn.request('GET', path)
     resp = conn.getresponse()
     
+    if resp.status == 404:
+        # we're probably outside the coverage area
+        return None
+    
     assert resp.status == 200, (resp.status, resp.read())
     
     try:
