@@ -191,7 +191,12 @@ def srtm1_datasource(lat, lon):
     #
     # Create a URL
     #
-    reg = srtm1_region(lat, lon)
+    try:
+        reg = srtm1_region(lat, lon)
+    except ValueError:
+        # we're probably outside a known region
+        return None
+
     fmt = 'http://dds.cr.usgs.gov/srtm/version2_1/SRTM1/Region_%02d/N%dW%d.hgt.zip'
     url = fmt % (reg, abs(lat), abs(lon))
     
@@ -275,9 +280,9 @@ def tile_bounds(coord, sref, buffer=0):
 def srtm1_datasources(minlon, minlat, maxlon, maxlat):
     """ Retrieve a list of SRTM1 datasources overlapping the tile coordinate.
     """
-    return [srtm1_datasource(lat, lon)
-            for (lon, lat)
-            in srtm1_quads(minlon, minlat, maxlon, maxlat)]
+    quads = srtm1_quads(minlon, minlat, maxlon, maxlat)
+    sources = [srtm1_datasource(lat, lon) for (lon, lat) in quads]
+    return [ds for ds in sources if ds]
 
 def slope2bytes(slope):
     """ Convert slope from floating point to 8-bit.

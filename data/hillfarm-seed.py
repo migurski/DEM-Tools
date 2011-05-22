@@ -27,7 +27,7 @@ class SeedingLayer (Layer):
         self.provider = Provider(self)
 
     def name(self):
-        return 'hills'
+        return '.'
 
 parser = OptionParser(usage="""%prog [options] [zoom...]
 
