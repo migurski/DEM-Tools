@@ -17,14 +17,14 @@ from DEM import Provider
 class SeedingLayer (Layer):
     """
     """
-    def __init__(self, directory):
+    def __init__(self, destination, temporary):
         """
         """
-        cache = Disk(directory, dirs='safe')
+        cache = Disk(destination, dirs='safe')
         config = Configuration(cache, '.')
         Layer.__init__(self, config, SphericalMercator(), Metatile())
         
-        self.provider = Provider(self)
+        self.provider = Provider(self, temporary)
 
     def name(self):
         return '.'
@@ -36,7 +36,7 @@ Bounding box is given as a pair of lat/lon coordinates, e.g. "37.788 -122.349
 
 See `%prog --help` for info.""")
 
-defaults = dict(verbose=True, directory='out', bbox=(37.777, -122.352, 37.839, -122.086))
+defaults = dict(verbose=True, destination='out', temporary=None, bbox=(37.777, -122.352, 37.839, -122.086))
 
 parser.set_defaults(**defaults)
 
@@ -50,8 +50,11 @@ parser.add_option('-f', '--progress-file', dest='progressfile',
 parser.add_option('-q', action='store_false', dest='verbose',
                   help='Suppress chatty output, --progress-file works well with this.')
 
-parser.add_option('-d', '--output-directory', dest='directory',
+parser.add_option('-d', '--output-directory', dest='destination',
                   help='Optional output directory for tiles, for the TileStache equivalent of this configured cache: {"name": "Disk", "path": <output directory>, "dirs": "safe", "gzip": []}. More information in http://tilestache.org/doc/#caches.')
+
+parser.add_option('-t', '--temporary-directory', dest='temporary',
+                  help='Optional working directory for temporary files. Consider a ram disk for this.')
 
 def generateCoordinates(ul, lr, zooms, padding):
     """ Generate a stream of (offset, count, coordinate) tuples for seeding.
@@ -109,7 +112,7 @@ if __name__ == '__main__':
 
         zooms[i] = int(zoom)
     
-    layer = SeedingLayer(options.directory)
+    layer = SeedingLayer(options.destination, options.temporary)
 
     for (offset, count, coord) in generateCoordinates(ul, lr, zooms, 0):
         

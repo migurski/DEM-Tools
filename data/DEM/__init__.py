@@ -35,8 +35,8 @@ class Provider:
         See http://tilestache.org/doc/#custom-providers for information
         on how the Provider object interacts with TileStache.
     """
-    def __init__(self, layer):
-        pass
+    def __init__(self, layer, tmpdir=None):
+        self.tmpdir = tmpdir
     
     def getTypeByExtension(self, ext):
         if ext.lower() != 'tiff':
@@ -63,6 +63,7 @@ class Provider:
         # Reproject and merge DEM datasources into destination datasets.
         #
         
+        driver = gdal.GetDriverByName('GTiff')
         elevation = numpy.zeros((width+2, height+2), numpy.float32)
         
         for (module, proportion) in choose_providers(zoom):
@@ -72,18 +73,27 @@ class Provider:
             minlon, minlat, z = cs2cs.TransformPoint(xmin, ymin)
             maxlon, maxlat, z = cs2cs.TransformPoint(xmax, ymax)
             
-            ds_provider = memory_dataset(width+2, height+2, area_wkt, buffered_xform)
+            try:
+                handle, filename = mkstemp(dir=self.tmpdir, prefix='render-area-provider-', suffix='.tif')
+                close(handle)
             
-            for ds_in in module.datasources(minlon, minlat, maxlon, maxlat):
-                gdal.ReprojectImage(ds_in, ds_provider, ds_in.GetProjection(), ds_provider.GetProjection(), gdal.GRA_Cubic)
-                ds_in.FlushCache()
-            
-            if proportion == 1:
-                elevation = ds_provider.ReadAsArray()
-            else:
-                elevation += ds_provider.ReadAsArray() * proportion
+                ds_source = driver.Create(filename, width+2, height+2, 1, gdal.GDT_Float32)
+                ds_source.SetGeoTransform(buffered_xform)
+                ds_source.SetProjection(area_wkt)
+                
+                for ds_in in module.datasources(minlon, minlat, maxlon, maxlat):
+                    gdal.ReprojectImage(ds_in, ds_source, ds_in.GetProjection(), ds_source.GetProjection(), gdal.GRA_Cubic)
+                    ds_in.FlushCache()
+                
+                if proportion == 1:
+                    elevation = ds_source.ReadAsArray()
+                else:
+                    elevation += ds_source.ReadAsArray() * proportion
 
-            ds_provider.FlushCache()
+                ds_source.FlushCache()
+
+            finally:
+                unlink(filename)
         
         #
         # Calculate and save slope and aspect.
@@ -93,7 +103,7 @@ class Provider:
         
         tile_xform = xmin, xres, 0, ymax, 0, yres
         
-        return SlopeAndAspect(slope, aspect, area_wkt, tile_xform)
+        return SlopeAndAspect(self.tmpdir, slope, aspect, area_wkt, tile_xform)
 
 class SlopeAndAspect:
     """ TileStache response object with PIL-like save() and crop() methods.
@@ -103,9 +113,11 @@ class SlopeAndAspect:
         See http://tilestache.org/doc/#custom-providers for information
         on how the SlopeAndAspect object interacts with TileStache.
     """
-    def __init__(self, slope, aspect, wkt, xform):
+    def __init__(self, tmpdir, slope, aspect, wkt, xform):
         """ Instantiate with array of slope and aspect, and minimal geographic information.
         """
+        self.tmpdir = tmpdir
+        
         self.slope = slope
         self.aspect = aspect
         
@@ -120,7 +132,7 @@ class SlopeAndAspect:
         assert format == 'TIFF'
         
         try:
-            handle, filename = mkstemp(prefix='slope-aspect-', suffix='.tif')
+            handle, filename = mkstemp(dir=self.tmpdir, prefix='slope-aspect-', suffix='.tif')
             close(handle)
             
             driver = gdal.GetDriverByName('GTiff')
@@ -151,22 +163,6 @@ class SlopeAndAspect:
             Not yet implemented!
         """
         raise NotImplementedError()
-
-def memory_dataset(width, height, wkt, xform):
-    """ Return a new in-memory dataset matching the requested geometry.
-    
-        Use global vsimem_counter to prevent them from stepping on one another.
-    """
-    global vsimem_counter
-
-    driver = gdal.GetDriverByName('GTiff')
-    dataset = driver.Create('/vsimem/%d.tif' % vsimem_counter, width, height, 1, gdal.GDT_Float32)
-    
-    dataset.SetGeoTransform(xform)
-    dataset.SetProjection(wkt)
-    
-    vsimem_counter += 1
-    return dataset
 
 def choose_providers(zoom):
     """ Return a list of data sources and proportions for given zoom level.
