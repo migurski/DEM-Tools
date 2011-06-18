@@ -81,12 +81,12 @@ class Provider:
         
         specular = numpy.power(specular, 20)
         
-        azimuth, altitude, deg2rad = 315.0, 40.0, pi/180
+        azimuth, altitude, deg2rad = 315.0, 30.0, pi/180
         diffuse = sin(altitude * deg2rad) * numpy.sin(slope) \
                 + cos(altitude * deg2rad) * numpy.cos(slope) \
                 * numpy.cos((azimuth - 90.0) * deg2rad - aspect)
         
-        shaded = .35 * diffuse + (.65 * specular)
+        shaded = .4 * diffuse + (.6 * specular)
         
         return arr2img(0xFF * shaded.clip(0, 1))
         
