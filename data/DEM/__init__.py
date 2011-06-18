@@ -77,20 +77,32 @@ class Provider:
                 handle, filename = mkstemp(dir=self.tmpdir, prefix='render-area-provider-', suffix='.tif')
                 close(handle)
             
-                ds_source = driver.Create(filename, width+2, height+2, 1, gdal.GDT_Float32)
-                ds_source.SetGeoTransform(buffered_xform)
-                ds_source.SetProjection(area_wkt)
+                ds_area = driver.Create(filename, width+2, height+2, 1, gdal.GDT_Float32)
+                ds_area.SetGeoTransform(buffered_xform)
+                ds_area.SetProjection(area_wkt)
                 
-                for ds_in in module.datasources(minlon, minlat, maxlon, maxlat):
-                    gdal.ReprojectImage(ds_in, ds_source, ds_in.GetProjection(), ds_source.GetProjection(), gdal.GRA_Cubic)
-                    ds_in.FlushCache()
+                for ds_dem in module.datasources(minlon, minlat, maxlon, maxlat):
+                
+                    # estimate the raster density across source DEM and output
+                    dem_samples = (maxlon - minlon) / ds_dem.GetGeoTransform()[1]
+                    area_pixels = (xmax - xmin) / ds_area.GetGeoTransform()[1]
+                    
+                    if dem_samples > area_pixels:
+                        # cubic looks better squeezing down
+                        resample = gdal.GRA_Cubic
+                    else:
+                        # cubic spline looks better stretching out
+                        resample = gdal.GRA_CubicSpline
+
+                    gdal.ReprojectImage(ds_dem, ds_area, ds_dem.GetProjection(), ds_area.GetProjection(), resample)
+                    ds_dem.FlushCache()
                 
                 if proportion == 1:
-                    elevation = ds_source.ReadAsArray()
+                    elevation = ds_area.ReadAsArray()
                 else:
-                    elevation += ds_source.ReadAsArray() * proportion
+                    elevation += ds_area.ReadAsArray() * proportion
 
-                ds_source.FlushCache()
+                ds_area.FlushCache()
 
             finally:
                 unlink(filename)
@@ -174,13 +186,16 @@ def choose_providers(zoom):
         return [(SRTM3, 1)]
 
     elif SRTM3.ideal_zoom < zoom and zoom < SRTM1.ideal_zoom:
-        bottom, top = SRTM3, SRTM1
+        #bottom, top = SRTM3, SRTM1 # SRTM1 looks terrible
+        bottom, top = SRTM3, NED10m
 
     elif zoom == SRTM1.ideal_zoom:
-        return [(SRTM1, 1)]
+        #return [(SRTM1, 1)] # SRTM1 looks terrible
+        bottom, top = SRTM3, NED10m
 
     elif SRTM1.ideal_zoom < zoom and zoom < NED10m.ideal_zoom:
-        bottom, top = SRTM1, NED10m
+        #bottom, top = SRTM1, NED10m # SRTM1 looks terrible
+        bottom, top = SRTM3, NED10m
 
     elif zoom >= NED10m.ideal_zoom:
         return [(NED10m, 1)]
