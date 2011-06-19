@@ -88,7 +88,7 @@ def datasource(lat, lon):
     #
     s, host, path, p, q, f = urlparse(url)
     
-    dem_dir = md5(url).hexdigest()[:2]
+    dem_dir = md5(url).hexdigest()[:3]
     dem_dir = join(source_dir, dem_dir)
     
     dem_path = join(dem_dir, basename(path)[:-4])

@@ -56,7 +56,7 @@ def datasource(lat, lon):
     #
     s, host, path, p, q, f = urlparse(url)
     
-    local_dir = md5(url).hexdigest()[:2]
+    local_dir = md5(url).hexdigest()[:3]
     local_dir = join(source_dir, local_dir)
     
     local_base = join(local_dir, basename(path)[:-4])
@@ -108,7 +108,7 @@ def datasource(lat, lon):
             if fnmatch(name, '*/*/float*.???') and name[-4:] in ('.hdr', '.flt', '.prj'):
                 local_file = local_base + name[-4:]
 
-            elif fnmatch(name, '*/float*_13.???') and name[-4:] in ('.hdr', '.prj'):
+            elif fnmatch(name, '*/float*_13.???') and name[-4:] in ('.hdr', '.flt', '.prj'):
                 local_file = local_base + name[-4:]
 
             elif fnmatch(name, '*/float*_13'):
@@ -121,7 +121,7 @@ def datasource(lat, lon):
             zipfile.extract(name, dirpath)
             move(join(dirpath, name), local_file)
             
-            if ext == '.hdr':
+            if local_file.endswith('.hdr'):
                 # GDAL needs some extra hints to understand the raw float data
                 hdr_file = open(local_file, 'a')
                 print >> hdr_file, 'nbits 32'
