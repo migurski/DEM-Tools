@@ -49,7 +49,7 @@ def hillshade(slope, aspect):
     specular = hillshade_raw(slope, aspect, 315.0, 85.0)
     
     # darken specular shading on slopes
-    specular = numpy.power(specular, 20)
+    specular = numpy.power(specular, 10)
 
     # 40% diffuse and 60% specular
     shaded = .4 * diffuse + (.6 * specular)
