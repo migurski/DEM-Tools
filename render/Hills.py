@@ -1,4 +1,4 @@
-from math import pi, sin, cos
+from math import pi, sin, cos, log
 from urlparse import urljoin, urlparse
 from os.path import join
 
@@ -30,6 +30,31 @@ def bytes2aspect(bytes):
         Aspect returned in radians, counterclockwise from -pi at north around to pi.
     """
     return (2 * bytes.astype(numpy.float32)/0xFF - 1) * pi
+
+def hillshade_raw(slope, aspect, azimuth, altitude):
+    """ Shade hills with a single light source.
+    """
+    deg2rad = pi/180
+
+    shaded = sin(altitude * deg2rad) * numpy.sin(slope) \
+            + cos(altitude * deg2rad) * numpy.cos(slope) \
+            * numpy.cos((azimuth - 90.0) * deg2rad - aspect)
+    
+    return shaded
+
+def hillshade(slope, aspect):
+    """ Shade hills with combined light sources.
+    """
+    diffuse = hillshade_raw(slope, aspect, 315.0, 30.0)
+    specular = hillshade_raw(slope, aspect, 315.0, 85.0)
+    
+    # darken specular shading on slopes
+    specular = numpy.power(specular, 20)
+
+    # 40% diffuse and 60% specular
+    shaded = .4 * diffuse + (.6 * specular)
+    
+    return shaded
 
 class SeededLayer (Layer):
     """
@@ -69,25 +94,22 @@ class Provider:
         path = '/'.join((z, x[:3], x[3:], y[:3], y[3:])) + '.tiff'
         path = join(self.datadir, path)
         
+        #
+        # Basic hill shading
+        #
         ds = gdal.Open(str(path))
         
         slope = bytes2slope(ds.GetRasterBand(1).ReadAsArray())
         aspect = bytes2aspect(ds.GetRasterBand(2).ReadAsArray())
+        shaded = hillshade(slope, aspect)
         
-        azimuth, altitude, deg2rad = 315.0, 85.0, pi/180
-        specular = sin(altitude * deg2rad) * numpy.sin(slope) \
-                 + cos(altitude * deg2rad) * numpy.cos(slope) \
-                 * numpy.cos((azimuth - 90.0) * deg2rad - aspect)
+        #
+        # Flat ground to 50% gray exactly by way of an exponent.
+        #
+        flat = numpy.array([pi/2], dtype=float)
+        flat = hillshade(flat, flat)[0]
+        exp = log(0.5) / log(flat)
         
-        specular = numpy.power(specular, 20)
-        
-        azimuth, altitude, deg2rad = 315.0, 30.0, pi/180
-        diffuse = sin(altitude * deg2rad) * numpy.sin(slope) \
-                + cos(altitude * deg2rad) * numpy.cos(slope) \
-                * numpy.cos((azimuth - 90.0) * deg2rad - aspect)
-        
-        shaded = .4 * diffuse + (.6 * specular)
+        shaded = numpy.power(shaded, exp)
         
         return arr2img(0xFF * shaded.clip(0, 1))
-        
-        raise Exception((self.datadir, ds, shaded))
