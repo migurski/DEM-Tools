@@ -4,9 +4,12 @@ from sys import stderr
 from math import floor, ceil, log
 from os import unlink, close, write, mkdir, chmod
 from os.path import basename, exists, isdir, join
-from ftplib import FTP, error_perm
+from tempfile import mkstemp, mkdtemp
+from httplib import HTTPConnection
+from shutil import move, rmtree
 from urlparse import urlparse
-from tempfile import mkstemp
+from zipfile import ZipFile
+from fnmatch import fnmatch
 from hashlib import md5
 
 from TileStache.Geography import SphericalMercator
@@ -42,11 +45,11 @@ def datasource(lat, lon):
         If it doesn't already exist locally in source_dir, grab a new one.
     """
     #
-    # Create a URL
+    # Create a URL - tdds.cr.usgs.gov looks to be a redirect from
+    # http://gisdata.usgs.gov/TDDS/DownloadFile.php?TYPE=ned3f_zip&FNAME=nxxwxx.zip
     #
-
-    fmt = 'ftp://projects.atlas.ca.gov/pub/ned/%d%d/float/floatn%dw%d_13.*'
-    url = fmt % (abs(lat), abs(lon), abs(lat), abs(lon))
+    fmt = 'http://tdds.cr.usgs.gov/ned/13arcsec/float/float_zips/n%dw%d.zip'
+    url = fmt % (abs(lat), abs(lon))
     
     #
     # Create a local filepath
@@ -56,7 +59,7 @@ def datasource(lat, lon):
     local_dir = md5(url).hexdigest()[:2]
     local_dir = join(source_dir, local_dir)
     
-    local_base = join(local_dir, basename(path)[:-2])
+    local_base = join(local_dir, basename(path)[:-4])
     local_path = local_base + '.flt'
     local_none = local_base + '.404'
     
@@ -80,36 +83,57 @@ def datasource(lat, lon):
     #
     print >> stderr, 'Retrieving', url, 'in DEM.NED10m.datasource().'
     
-    conn = FTP(host)
-    conn.login()
+    conn = HTTPConnection(host, 80)
+    conn.request('GET', path)
+    resp = conn.getresponse()
     
-    for ext in ('.prj', '.hdr', '.flt'):
-        remote_path = path[:-2] + ext
-        local_path = local_base + ext
-        local_file = open(local_path, 'wb')
-        
-        try:
-            conn.retrbinary('RETR ' + remote_path, local_file.write)
-        except error_perm:
-            # permanent error, for example 550 when there's no file
-            print >> open(local_none, 'w'), url
-            return None
+    if resp.status == 404:
+        # we're probably outside the coverage area
+        print >> open(local_none, 'w'), url
+        return None
     
-        print >> stderr, '  ', remote_path, '-->', local_path
-        
-        if ext == '.hdr':
-            # GDAL needs some extra hints to understand the raw float data
-            print >> local_file, 'nbits 32'
-            print >> local_file, 'pixeltype float'
-        
-        local_file.close()
+    assert resp.status == 200, (resp.status, resp.read())
+    
+    try:
+        dirpath = mkdtemp(prefix='ned10m-')
+        zippath = join(dirpath, 'dem.zip')
 
-    conn.quit()
+        zipfile = open(zippath, 'w')
+        zipfile.write(resp.read())
+        zipfile.close()
+
+        zipfile = ZipFile(zippath)
+        
+        for name in zipfile.namelist():
+            if fnmatch(name, '*/*/float*.???') and name[-4:] in ('.hdr', '.flt', '.prj'):
+                local_file = local_base + name[-4:]
+
+            elif fnmatch(name, '*/float*_13.???') and name[-4:] in ('.hdr', '.prj'):
+                local_file = local_base + name[-4:]
+
+            elif fnmatch(name, '*/float*_13'):
+                local_file = local_base + '.flt'
+
+            else:
+                # don't recognize the contents of this zip file
+                continue
+            
+            zipfile.extract(name, dirpath)
+            move(join(dirpath, name), local_file)
+            
+            if ext == '.hdr':
+                # GDAL needs some extra hints to understand the raw float data
+                hdr_file = open(local_file, 'a')
+                print >> hdr_file, 'nbits 32'
+                print >> hdr_file, 'pixeltype float'
+        
+        #
+        # The file better exist locally now
+        #
+        return gdal.Open(local_path, gdal.GA_ReadOnly)
     
-    #
-    # The file better exist locally now
-    #
-    return gdal.Open(local_path, gdal.GA_ReadOnly)
+    finally:
+        rmtree(dirpath)
 
 def datasources(minlon, minlat, maxlon, maxlat):
     """ Retrieve a list of SRTM1 datasources overlapping the tile coordinate.
