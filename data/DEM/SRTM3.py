@@ -62,7 +62,7 @@ def datasource(lat, lon):
         # we're probably outside a known region
         return None
 
-    fmt = 'http://dds.cr.usgs.gov/srtm/version2_1/SRTM3/%s/N%dW%d.hgt.zip'
+    fmt = 'http://dds.cr.usgs.gov/srtm/version2_1/SRTM3/%s/N%02dW%03d.hgt.zip'
     url = fmt % (reg, abs(lat), abs(lon))
     
     #
