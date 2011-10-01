@@ -12,8 +12,9 @@ from TileStache.Geography import SphericalMercator
 
 from osgeo import gdal, osr
 from PIL import Image
-
 import numpy
+
+from .. import slope2bytes, aspect2bytes
 
 # used to prevent clobbering in /vsimem/, see:
 # http://osgeo-org.1803224.n2.nabble.com/gdal-dev-Outputting-to-vsimem-td6221295.html
@@ -207,34 +208,6 @@ def choose_providers(zoom):
     proportion = 1. - (zoom - float(bottom.ideal_zoom)) / difference
 
     return [(bottom, proportion), (top, 1 - proportion)]
-
-def slope2bytes(slope):
-    """ Convert slope from floating point to 8-bit.
-    
-        Slope given in radians, from 0 for sheer face to pi/2 for flat ground.
-    """
-    return (0xFF * numpy.sin(slope + pi/2)).astype(numpy.uint8)
-
-def aspect2bytes(aspect):
-    """ Convert aspect from floating point to 8-bit.
-    
-        Aspect given in radians, counterclockwise from -pi at north around to pi.
-    """
-    return (0xFF * (aspect/pi + 1)/2).astype(numpy.uint8)
-
-def bytes2slope(bytes):
-    """ Convert slope from 8-bit to floating point.
-    
-        Slope returned in radians, from 0 for sheer face to pi/2 for flat ground.
-    """
-    return pi/2 - numpy.arcsin(bytes.astype(numpy.float32) / 0xFF)
-
-def bytes2aspect(bytes):
-    """ Convert aspect from 8-bit to floating point.
-    
-        Aspect returned in radians, counterclockwise from -pi at north around to pi.
-    """
-    return (2 * bytes.astype(numpy.float32)/0xFF - 1) * pi
 
 def calculate_slope_aspect(elevation, xres, yres, z=1.0):
     """ Return a pair of arrays 2 pixels smaller than the input elevation array.
