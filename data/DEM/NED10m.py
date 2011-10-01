@@ -48,7 +48,8 @@ def datasource(lat, lon):
     # Create a URL - tdds.cr.usgs.gov looks to be a redirect from
     # http://gisdata.usgs.gov/TDDS/DownloadFile.php?TYPE=ned3f_zip&FNAME=nxxwxx.zip
     #
-    fmt = 'http://tdds.cr.usgs.gov/ned/13arcsec/float/float_zips/n%dw%d.zip'
+    # FIXME for southern/western hemispheres
+    fmt = 'http://tdds.cr.usgs.gov/ned/13arcsec/float/float_zips/n%02dw%03d.zip'
     url = fmt % (abs(lat), abs(lon))
     
     #
