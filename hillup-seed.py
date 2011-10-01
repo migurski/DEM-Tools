@@ -4,30 +4,12 @@
 from optparse import OptionParser
 
 from TileStache import getTile
-from TileStache.Caches import Disk
-from TileStache.Config import Configuration
-from TileStache.Core import Layer, Metatile
 from TileStache.Geography import SphericalMercator
 
 from ModestMaps.Core import Coordinate
 from ModestMaps.Geo import Location
 
-from Hillup.data import Provider
-
-class SeedingLayer (Layer):
-    """
-    """
-    def __init__(self, source, destination, temporary):
-        """
-        """
-        cache = Disk(destination, dirs='safe')
-        config = Configuration(cache, '.')
-        Layer.__init__(self, config, SphericalMercator(), Metatile())
-        
-        self.provider = Provider(self, source, temporary)
-
-    def name(self):
-        return '.'
+from Hillup.data import SeedingLayer
 
 parser = OptionParser(usage="""%prog [options] [zoom...]
 
@@ -36,27 +18,21 @@ Bounding box is given as a pair of lat/lon coordinates, e.g. "37.788 -122.349
 
 See `%prog --help` for info.""")
 
-defaults = dict(verbose=True, source='source', destination='out', temporary=None, bbox=(37.777, -122.352, 37.839, -122.086))
+defaults = dict(demdir='source', tiledir='out', tmpdir=None, bbox=(37.777, -122.352, 37.839, -122.086))
 
 parser.set_defaults(**defaults)
 
 parser.add_option('-b', '--bbox', dest='bbox',
-                  help='Bounding box in floating point geographic coordinates: south west north east.',
+                  help='Bounding box in floating point geographic coordinates: south west north east, default (%.3f, %.3f, %.3f, %.3f).' % defaults['bbox'],
                   type='float', nargs=4)
 
-parser.add_option('-f', '--progress-file', dest='progressfile',
-                  help="Optional JSON progress file that gets written on each iteration, so you don't have to pay close attention.")
+parser.add_option('-d', '--dem-directory', dest='demdir',
+                  help='Directory for raw source elevation files, default "%(demdir)s".' % defaults)
 
-parser.add_option('-q', action='store_false', dest='verbose',
-                  help='Suppress chatty output, --progress-file works well with this.')
+parser.add_option('-t', '--tile-directory', dest='tiledir',
+                  help='Directory for generated slope/aspect tiles, default "%(tiledir)s". This directory will be used as the "source_dir" for Hillup.tiles:Provider shaded renderings.' % defaults)
 
-parser.add_option('-s', '--source-directory', dest='source',
-                  help='Source directory for elevation files, default "%(source)s".' % defaults)
-
-parser.add_option('-d', '--output-directory', dest='destination',
-                  help='Output directory for tiles, default "%(destination)s". TileStache equivalent of this configured cache: {"name": "Disk", "path": <output directory>, "dirs": "safe", "gzip": []}. More information in http://tilestache.org/doc/#caches.' % defaults)
-
-parser.add_option('-t', '--temporary-directory', dest='temporary',
+parser.add_option('--tmp-directory', dest='tmpdir',
                   help='Optional working directory for temporary files. Consider a ram disk for this.')
 
 def generateCoordinates(ul, lr, zooms, padding):
@@ -94,9 +70,6 @@ if __name__ == '__main__':
 
     options, zooms = parser.parse_args()
 
-    verbose = options.verbose
-    progressfile = options.progressfile
-
     lat1, lon1, lat2, lon2 = options.bbox
     south, west = min(lat1, lat2), min(lon1, lon2)
     north, east = max(lat1, lat2), max(lon1, lon2)
@@ -115,7 +88,7 @@ if __name__ == '__main__':
 
         zooms[i] = int(zoom)
     
-    layer = SeedingLayer(options.source, options.destination, options.temporary)
+    layer = SeedingLayer(options.demdir, options.tiledir, options.tmpdir)
 
     for (offset, count, coord) in generateCoordinates(ul, lr, zooms, 0):
         

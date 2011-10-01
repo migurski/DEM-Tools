@@ -9,6 +9,9 @@ import NED10m, SRTM1, SRTM3
 
 from ModestMaps.Core import Coordinate
 from TileStache.Geography import SphericalMercator
+from TileStache.Core import Layer, Metatile
+from TileStache.Config import Configuration
+from TileStache.Caches import Disk
 
 from osgeo import gdal, osr
 from PIL import Image
@@ -30,15 +33,32 @@ webmerc_proj = SphericalMercator()
 webmerc_sref = osr.SpatialReference()
 webmerc_sref.ImportFromProj4(webmerc_proj.srs)
 
+class SeedingLayer (Layer):
+    """ Tilestache-compatible seeding layer for preparing tiled data.
+    
+        Intended for use in hillup-seed.py script for preparing a tile directory.
+    """
+    def __init__(self, demdir, tiledir, tmpdir):
+        """
+        """
+        cache = Disk(tiledir, dirs='safe')
+        config = Configuration(cache, '.')
+        Layer.__init__(self, config, SphericalMercator(), Metatile())
+        
+        self.provider = Provider(self, demdir, tmpdir)
+
+    def name(self):
+        return '.'
+
 class Provider:
     """ TileStache provider for generating tiles of DEM slope and aspect data.
 
         See http://tilestache.org/doc/#custom-providers for information
         on how the Provider object interacts with TileStache.
     """
-    def __init__(self, layer, source_dir, tmpdir=None):
+    def __init__(self, layer, demdir, tmpdir=None):
         self.tmpdir = tmpdir
-        self.source_dir = source_dir
+        self.demdir = demdir
     
     def getTypeByExtension(self, ext):
         if ext.lower() != 'tiff':
@@ -83,7 +103,7 @@ class Provider:
                 ds_area.SetGeoTransform(buffered_xform)
                 ds_area.SetProjection(area_wkt)
                 
-                ds_args = minlon, minlat, maxlon, maxlat, self.source_dir
+                ds_args = minlon, minlat, maxlon, maxlat, self.demdir
                 
                 for ds_dem in module.datasources(*ds_args):
                 
