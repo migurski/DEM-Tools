@@ -20,7 +20,6 @@ DEM-Tools relies on a large stack of open source software. Version dependencies 
 * Python (2.7)
 * gdal (1.8.1) and its dependencies
 * PIL (1.1.7)
-* Mapnik (0.7.1, 2.0 not tested) and its dependencies, including boost
 * ModestMaps (1.2)
 * TileStache (1.19.0)
 
@@ -31,7 +30,7 @@ On MacOS, all requirements can be installed via HomeBrew and Python's easy_insta
 ## Usage ##
 
 1. Clone the git repository.
-2. cd to the data directory and run `python hillup-seed.py 10`. That will download necessary DEM data and then populate the `out` directory with slope-and-azimuth TIFFs for a small region near San Francisco at zoom level 10. If that works, you can then generate a larger set of TIFFs via a line like
+2. Run `python hillup-seed.py 10`. That will download necessary DEM data and then populate the `out` directory with slope-and-azimuth TIFFs for a small region near San Francisco at zoom level 10. If that works, you can then generate a larger set of TIFFs via a line like
 `python hillup-seed.py -b 41 -121 42 -120 4 5 6 7 8 9 10 11 12 13 14 15`
 3. install `render/tile.cgi` as a CGI script in your favorite web server. You can then test it by loading a URL like http://localhost/tiles/hills/10/163/395.png where `localhost/tiles/hills` matches the installation path and `10/163/395.png` is the slippy math pap to a tile (in this case, near San Francisco at 37.84, -122.50).
 
