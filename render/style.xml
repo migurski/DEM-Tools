@@ -1,15 +1,11 @@
-<Map bgcolor="#99b3cc" srs="+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null">
-  <Style name="polygon style 1">
+<Map bgcolor="black" srs="+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null">
+  <Style name="white-land">
     <Rule>
       <PolygonSymbolizer>
-        <CssParameter name="fill">#e4e5d5</CssParameter>
+        <CssParameter name="fill">white</CssParameter>
       </PolygonSymbolizer>
-    </Rule>
-  </Style>
-  <Style name="line style 2">
-    <Rule>
       <LineSymbolizer>
-        <CssParameter name="stroke">#e4e5d5</CssParameter>
+        <CssParameter name="stroke">white</CssParameter>
         <CssParameter name="stroke-linecap">round</CssParameter>
         <CssParameter name="stroke-linejoin">round</CssParameter>
         <CssParameter name="stroke-width">1</CssParameter>
@@ -17,8 +13,7 @@
     </Rule>
   </Style>
   <Layer name="layer 6" srs="+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null" status="on">
-    <StyleName>polygon style 1</StyleName>
-    <StyleName>line style 2</StyleName>
+    <StyleName>white-land</StyleName>
     <Datasource>
       <Parameter name="type">postgis</Parameter>
       <Parameter name="host">localhost</Parameter>
