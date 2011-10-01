@@ -2,9 +2,6 @@ from math import pi, sin, cos, log
 from urlparse import urljoin, urlparse
 from os.path import join, exists
 
-from TileStache.Caches import Disk
-from TileStache.Config import Configuration
-from TileStache.Core import Layer, Metatile
 from TileStache.Geography import SphericalMercator
 
 from osgeo import gdal
@@ -37,43 +34,36 @@ def hillshade(slope, aspect):
     
     return shaded
 
-class SeededLayer (Layer):
-    """
-    """
-    def __init__(self, source):
-        """
-        """
-        cache = Disk(source, dirs='safe')
-        config = Configuration(cache, '.')
-        Layer.__init__(self, config, SphericalMercator(), Metatile())
-        
-        self.provider = None
-
-    def name(self):
-        return '.'
-    
-    def dataset(self, coord):
-        return self.config.cache.read(self, coord, 'TIFF')
-
 class Provider:
-    
-    def __init__(self, layer, datadir):
+    """ TileStache provider for rendering hillshaded tiles.
+        
+        Looks for two-band slope+aspect TIFF files in the provided source
+        directory and applies a basic hillshading algorithm before returning
+        a simple grayscale PIL image with flat ground shaded to 50% gray.
+
+        See http://tilestache.org/doc/#custom-providers for information
+        on how the Provider object interacts with TileStache.
+    """
+    def __init__(self, layer, source_dir):
         self.layer = layer
         
-        #
-        # Use Caches.Disk to build file paths
-        #
-        datadir = urljoin(layer.config.dirpath, datadir)
-        scheme, host, path, p, q, f = urlparse(datadir)
+        source_dir = urljoin(layer.config.dirpath, source_dir)
+        scheme, host, path, p, q, f = urlparse(source_dir)
         assert scheme in ('file', '')
-        self.datadir = path
+        self.source_dir = path
     
     def renderTile(self, width, height, srs, coord):
         """
         """
+        if srs != SphericalMercator().srs:
+            raise Exception('Tile projection must be spherical mercator, not "%(srs)s"' % locals())
+        
+        #
+        # Find a file to work with
+        #
         z, x, y = '%d' % coord.zoom, '%06d' % coord.column, '%06d' % coord.row
         path = '/'.join((z, x[:3], x[3:], y[:3], y[3:])) + '.tiff'
-        path = join(self.datadir, path)
+        path = join(self.source_dir, path)
         
         #
         # Basic hill shading
