@@ -1,38 +1,12 @@
-from math import pi, sin, cos, log
+from math import pi, log
 from urlparse import urljoin, urlparse
 from os.path import join, exists
 
 from TileStache.Geography import SphericalMercator
 
-from osgeo import gdal
 import numpy
 
-from . import arr2img, bytes2slope, bytes2aspect
-
-def hillshade_raw(slope, aspect, azimuth, altitude):
-    """ Shade hills with a single light source.
-    """
-    deg2rad = pi/180
-
-    shaded = sin(altitude * deg2rad) * numpy.sin(slope) \
-            + cos(altitude * deg2rad) * numpy.cos(slope) \
-            * numpy.cos((azimuth - 90.0) * deg2rad - aspect)
-    
-    return shaded
-
-def hillshade(slope, aspect):
-    """ Shade hills with combined light sources.
-    """
-    diffuse = hillshade_raw(slope, aspect, 315.0, 30.0)
-    specular = hillshade_raw(slope, aspect, 315.0, 85.0)
-    
-    # darken specular shading on slopes
-    specular = numpy.power(specular, 4)
-
-    # 40% diffuse and 60% specular
-    shaded = .4 * diffuse + (.6 * specular)
-    
-    return shaded
+from . import arr2img, read_slope_aspect, shade_hills
 
 class Provider:
     """ TileStache provider for rendering hillshaded tiles.
@@ -68,20 +42,14 @@ class Provider:
         #
         # Basic hill shading
         #
-        if not exists(path):
-            raise Exception('Missing file "%s"' % path)
-        
-        ds = gdal.Open(str(path))
-        
-        slope = bytes2slope(ds.GetRasterBand(1).ReadAsArray())
-        aspect = bytes2aspect(ds.GetRasterBand(2).ReadAsArray())
-        shaded = hillshade(slope, aspect)
+        slope, aspect = read_slope_aspect(path)
+        shaded = shade_hills(slope, aspect)
         
         #
         # Flat ground to 50% gray exactly by way of an exponent.
         #
         flat = numpy.array([pi/2], dtype=float)
-        flat = hillshade(flat, flat)[0]
+        flat = shade_hills(flat, flat)[0]
         exp = log(0.5) / log(flat)
         
         shaded = numpy.power(shaded, exp)
