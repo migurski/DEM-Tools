@@ -12,6 +12,6 @@ setup(name='Hillup',
       url='https://github.com/migurski',
       requires=['ModestMaps','PIL','numpy'],
       packages=['Hillup'],
-      scripts=[],
+      scripts=['hillup-seed.py'],
       download_url='https://github.com/downloads/migurski' % locals(),
       license='BSD')
