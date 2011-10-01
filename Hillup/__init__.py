@@ -1,4 +1,6 @@
 from math import pi, sin, cos
+from os import unlink, close
+from tempfile import mkstemp
 from os.path import exists
 
 from osgeo import gdal
@@ -22,6 +24,36 @@ def read_slope_aspect(filename):
     aspect = bytes2aspect(ds.GetRasterBand(2).ReadAsArray())
     
     return slope, aspect
+
+def save_slope_aspect(slope, aspect, wkt, xform, fp, tmpdir):
+    """ Save arrays of slope and aspect to a GeoTIFF file pointer.
+    """
+    w, h = slope.shape
+    
+    try:
+        handle, filename = mkstemp(dir=tmpdir, prefix='slope-aspect-', suffix='.tif')
+        close(handle)
+        
+        driver = gdal.GetDriverByName('GTiff')
+        gtiff_options = ['COMPRESS=JPEG', 'JPEG_QUALITY=95', 'INTERLEAVE=BAND']
+        ds_both = driver.Create(filename, w, h, 2, gdal.GDT_Byte, gtiff_options)
+        
+        ds_both.SetGeoTransform(xform)
+        ds_both.SetProjection(wkt)
+        
+        band_slope = ds_both.GetRasterBand(1)
+        band_slope.SetRasterColorInterpretation(gdal.GCI_Undefined)
+        band_slope.WriteRaster(0, 0, w, h, slope2bytes(slope).tostring())
+        
+        band_aspect = ds_both.GetRasterBand(2)
+        band_aspect.SetRasterColorInterpretation(gdal.GCI_Undefined)
+        band_aspect.WriteRaster(0, 0, w, h, aspect2bytes(aspect).tostring())
+        
+        ds_both.FlushCache()
+        fp.write(open(filename, 'r').read())
+    
+    finally:
+        unlink(filename)
 
 def shade_hills(slope, aspect):
     """ Convert slope and aspect to 0-1 grayscale with combined light sources.

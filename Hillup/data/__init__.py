@@ -14,7 +14,7 @@ from osgeo import gdal, osr
 from PIL import Image
 import numpy
 
-from .. import slope2bytes, aspect2bytes
+from .. import save_slope_aspect
 
 # used to prevent clobbering in /vsimem/, see:
 # http://osgeo-org.1803224.n2.nabble.com/gdal-dev-Outputting-to-vsimem-td6221295.html
@@ -145,32 +145,10 @@ class SlopeAndAspect:
     def save(self, output, format):
         """ Save a two-band GeoTIFF to output file-like object.
         """
-        assert format == 'TIFF'
+        if format != 'TIFF':
+            raise Exception('File format other than TIFF for slope and aspect: "%s"' % format)
         
-        try:
-            handle, filename = mkstemp(dir=self.tmpdir, prefix='slope-aspect-', suffix='.tif')
-            close(handle)
-            
-            driver = gdal.GetDriverByName('GTiff')
-            gtiff_options = ['COMPRESS=JPEG', 'JPEG_QUALITY=95', 'INTERLEAVE=BAND']
-            ds_both = driver.Create(filename, self.w, self.h, 2, gdal.GDT_Byte, gtiff_options)
-            
-            ds_both.SetGeoTransform(self.xform)
-            ds_both.SetProjection(self.wkt)
-            
-            band_slope = ds_both.GetRasterBand(1)
-            band_slope.SetRasterColorInterpretation(gdal.GCI_Undefined)
-            band_slope.WriteRaster(0, 0, self.w, self.h, slope2bytes(self.slope).tostring())
-            
-            band_aspect = ds_both.GetRasterBand(2)
-            band_aspect.SetRasterColorInterpretation(gdal.GCI_Undefined)
-            band_aspect.WriteRaster(0, 0, self.w, self.h, aspect2bytes(self.aspect).tostring())
-            
-            ds_both.FlushCache()
-            output.write(open(filename, 'r').read())
-        
-        finally:
-            unlink(filename)
+        save_slope_aspect(self.slope, self.aspect, self.wkt, self.xform, output, self.tmpdir)
     
     def crop(self, box):
         """ Returns a rectangular region from the current image.
