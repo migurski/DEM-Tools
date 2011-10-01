@@ -1,6 +1,6 @@
 from math import pi, sin, cos, log
 from urlparse import urljoin, urlparse
-from os.path import join
+from os.path import join, exists
 
 from TileStache.Caches import Disk
 from TileStache.Config import Configuration
@@ -97,6 +97,9 @@ class Provider:
         #
         # Basic hill shading
         #
+        if not exists(path):
+            raise Exception('Missing file "%s"' % path)
+        
         ds = gdal.Open(str(path))
         
         slope = bytes2slope(ds.GetRasterBand(1).ReadAsArray())
