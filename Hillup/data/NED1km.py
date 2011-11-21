@@ -4,12 +4,10 @@ from sys import stderr
 from math import floor, ceil, log
 from os import unlink, close, write, mkdir, chmod
 from os.path import basename, exists, isdir, join
-from tempfile import mkstemp, mkdtemp
 from httplib import HTTPConnection
-from shutil import move, rmtree
 from urlparse import urlparse
-from zipfile import ZipFile
-from fnmatch import fnmatch
+from StringIO import StringIO
+from gzip import GzipFile
 from hashlib import md5
 
 from TileStache.Geography import SphericalMercator
@@ -43,12 +41,8 @@ def datasource(lat, lon, source_dir):
     
         If it doesn't already exist locally in source_dir, grab a new one.
     """
-    #
-    # Create a URL - tdds.cr.usgs.gov looks to be a redirect from
-    # http://gisdata.usgs.gov/TDDS/DownloadFile.php?TYPE=ned3f_zip&FNAME=nxxwxx.zip
-    #
     # FIXME for southern/western hemispheres
-    fmt = 'http://tdds.cr.usgs.gov/ned/13arcsec/float/float_zips/n%02dw%03d.zip'
+    fmt = 'http://ned.stamen.com/1km/n%02dw%03d.tif.gz'
     url = fmt % (abs(lat), abs(lon))
     
     #
@@ -59,12 +53,9 @@ def datasource(lat, lon, source_dir):
     local_dir = md5(url).hexdigest()[:3]
     local_dir = join(source_dir, local_dir)
     
-    local_base = join(local_dir, basename(path)[:-4])
-    local_path = local_base + '.flt'
+    local_base = join(local_dir, basename(path)[:-7])
+    local_path = local_base + '.tif'
     local_none = local_base + '.404'
-    
-    # temporary local override!
-    local_path = '/home/migurski/dem-tools/ned1km/n%02dw%03d.tif' % (abs(lat), abs(lon))
     
     #
     # Check if the file exists locally
@@ -90,53 +81,22 @@ def datasource(lat, lon, source_dir):
     conn.request('GET', path)
     resp = conn.getresponse()
     
-    if resp.status == 404:
+    if resp.status in range(400, 500):
         # we're probably outside the coverage area
         print >> open(local_none, 'w'), url
         return None
     
     assert resp.status == 200, (resp.status, resp.read())
     
-    try:
-        dirpath = mkdtemp(prefix='ned1km-')
-        zippath = join(dirpath, 'dem.zip')
-
-        zipfile = open(zippath, 'w')
-        zipfile.write(resp.read())
-        zipfile.close()
-
-        zipfile = ZipFile(zippath)
-        
-        for name in zipfile.namelist():
-            if fnmatch(name, '*/*/float*.???') and name[-4:] in ('.hdr', '.flt', '.prj'):
-                local_file = local_base + name[-4:]
-
-            elif fnmatch(name, '*/float*_13.???') and name[-4:] in ('.hdr', '.flt', '.prj'):
-                local_file = local_base + name[-4:]
-
-            elif fnmatch(name, '*/float*_13'):
-                local_file = local_base + '.flt'
-
-            else:
-                # don't recognize the contents of this zip file
-                continue
-            
-            zipfile.extract(name, dirpath)
-            move(join(dirpath, name), local_file)
-            
-            if local_file.endswith('.hdr'):
-                # GDAL needs some extra hints to understand the raw float data
-                hdr_file = open(local_file, 'a')
-                print >> hdr_file, 'nbits 32'
-                print >> hdr_file, 'pixeltype float'
-        
-        #
-        # The file better exist locally now
-        #
-        return gdal.Open(local_path, gdal.GA_ReadOnly)
+    body = StringIO(resp.read())
+    file = GzipFile(fileobj=body, mode='r')
     
-    finally:
-        rmtree(dirpath)
+    open(local_path, mode='w').write(file.read())
+    
+    #
+    # The file better exist locally now
+    #
+    return gdal.Open(local_path, gdal.GA_ReadOnly)
 
 def datasources(minlon, minlat, maxlon, maxlat, source_dir):
     """ Retrieve a list of SRTM1 datasources overlapping the tile coordinate.
