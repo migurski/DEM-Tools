@@ -5,7 +5,7 @@ from os import unlink, close
 from itertools import product
 from tempfile import mkstemp
 
-import NED10m, SRTM1, SRTM3
+import NED10m, NED100m, NED1km, SRTM1, SRTM3
 
 from ModestMaps.Core import Coordinate
 from TileStache.Geography import SphericalMercator
@@ -178,7 +178,7 @@ class SlopeAndAspect:
         """
         raise NotImplementedError()
 
-def choose_providers(zoom):
+def _choose_providers(zoom):
     """ Return a list of data sources and proportions for given zoom level.
     
         Each data source is a module such as SRTM1 or SRTM3, and the proportions
@@ -198,6 +198,34 @@ def choose_providers(zoom):
     elif SRTM1.ideal_zoom < zoom and zoom < NED10m.ideal_zoom:
         #bottom, top = SRTM1, NED10m # SRTM1 looks terrible
         bottom, top = SRTM3, NED10m
+
+    elif zoom >= NED10m.ideal_zoom:
+        return [(NED10m, 1)]
+
+    difference = float(top.ideal_zoom) - float(bottom.ideal_zoom)
+    proportion = 1. - (zoom - float(bottom.ideal_zoom)) / difference
+
+    return [(bottom, proportion), (top, 1 - proportion)]
+
+def choose_providers(zoom):
+    """ Return a list of data sources and proportions for given zoom level.
+    
+        Each data source is a module such as NED10m or NED1km, and the proportions
+        must all add up to one. Return list has either one or two items.
+    """
+    if zoom <= NED1km.ideal_zoom:
+        return [(NED1km, 1)]
+
+    elif NED1km.ideal_zoom < zoom and zoom < NED100m.ideal_zoom:
+        #bottom, top = NED1km, NED100m
+        bottom, top = NED1km, NED100m
+
+    elif zoom == NED100m.ideal_zoom:
+        return [(NED100m, 1)]
+
+    elif NED100m.ideal_zoom < zoom and zoom < NED10m.ideal_zoom:
+        #bottom, top = NED100m, NED10m
+        bottom, top = NED100m, NED10m
 
     elif zoom >= NED10m.ideal_zoom:
         return [(NED10m, 1)]
