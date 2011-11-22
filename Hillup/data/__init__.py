@@ -38,27 +38,30 @@ class SeedingLayer (Layer):
     
         Intended for use in hillup-seed.py script for preparing a tile directory.
     """
-    def __init__(self, demdir, tiledir, tmpdir):
+    def __init__(self, demdir, tiledir, tmpdir, source):
         """
         """
         cache = Disk(tiledir, dirs='safe')
         config = Configuration(cache, '.')
         Layer.__init__(self, config, SphericalMercator(), Metatile())
         
-        self.provider = Provider(self, demdir, tmpdir)
+        self.provider = Provider(self, demdir, tmpdir, source)
 
     def name(self):
         return '.'
 
 class Provider:
     """ TileStache provider for generating tiles of DEM slope and aspect data.
+    
+        Source parameter can be "srtm-ned" (default) or "ned-only".
 
         See http://tilestache.org/doc/#custom-providers for information
         on how the Provider object interacts with TileStache.
     """
-    def __init__(self, layer, demdir, tmpdir=None):
+    def __init__(self, layer, demdir, tmpdir=None, source='srtm-ned'):
         self.tmpdir = tmpdir
         self.demdir = demdir
+        self.source = source
     
     def getTypeByExtension(self, ext):
         if ext.lower() != 'tiff':
@@ -70,6 +73,15 @@ class Provider:
         """ Return an instance of SlopeAndAspect for requested area.
         """
         assert srs == webmerc_proj.srs # <-- good enough for now
+        
+        if self.source == 'srtm-ned':
+            providers = choose_providers_srtm(zoom)
+        
+        elif self.source == 'ned-only':
+            providers = choose_providers_ned(zoom)
+
+        else:
+            raise Exception('Unknown source "%s"' % source)
         
         #
         # Prepare information for datasets of the desired extent and projection.
@@ -88,7 +100,7 @@ class Provider:
         driver = gdal.GetDriverByName('GTiff')
         elevation = numpy.zeros((width+2, height+2), numpy.float32)
         
-        for (module, proportion) in choose_providers(zoom):
+        for (module, proportion) in providers:
         
             cs2cs = osr.CoordinateTransformation(webmerc_sref, module.sref)
             
@@ -178,9 +190,9 @@ class SlopeAndAspect:
         """
         raise NotImplementedError()
 
-def _choose_providers(zoom):
+def choose_providers_srtm(zoom):
     """ Return a list of data sources and proportions for given zoom level.
-    
+        
         Each data source is a module such as SRTM1 or SRTM3, and the proportions
         must all add up to one. Return list has either one or two items.
     """
@@ -207,7 +219,7 @@ def _choose_providers(zoom):
 
     return [(bottom, proportion), (top, 1 - proportion)]
 
-def choose_providers(zoom):
+def choose_providers_ned(zoom):
     """ Return a list of data sources and proportions for given zoom level.
     
         Each data source is a module such as NED10m or NED1km, and the proportions

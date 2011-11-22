@@ -18,7 +18,7 @@ Bounding box is given as a pair of lat/lon coordinates, e.g. "37.788 -122.349
 
 See `%prog --help` for info.""")
 
-defaults = dict(demdir='source', tiledir='out', tmpdir=None, bbox=(37.777, -122.352, 37.839, -122.086))
+defaults = dict(demdir='source', tiledir='out', tmpdir=None, source='srtm-ned', bbox=(37.777, -122.352, 37.839, -122.086))
 
 parser.set_defaults(**defaults)
 
@@ -31,6 +31,10 @@ parser.add_option('-d', '--dem-directory', dest='demdir',
 
 parser.add_option('-t', '--tile-directory', dest='tiledir',
                   help='Directory for generated slope/aspect tiles, default "%(tiledir)s". This directory will be used as the "source_dir" for Hillup.tiles:Provider shaded renderings.' % defaults)
+
+parser.add_option('-s', '--source', dest='source',
+                  help='Data source for elevations. One of "srtm-ned" for SRTM and NED data or "ned-only" for US-only downsample NED, default "%(source)s".' % defaults,
+                  choices=('srtm-ned', 'ned-only'))
 
 parser.add_option('--tmp-directory', dest='tmpdir',
                   help='Optional working directory for temporary files. Consider a ram disk for this.')
@@ -88,7 +92,7 @@ if __name__ == '__main__':
 
         zooms[i] = int(zoom)
     
-    layer = SeedingLayer(options.demdir, options.tiledir, options.tmpdir)
+    layer = SeedingLayer(options.demdir, options.tiledir, options.tmpdir, options.source)
 
     for (offset, count, coord) in generateCoordinates(ul, lr, zooms, 0):
         
