@@ -73,9 +73,7 @@ def render_tile(source_dir, coord, min_zoom):
 class Provider:
     """ TileStache provider for rendering hillshaded tiles.
         
-        Looks for two-band slope+aspect TIFF files in the provided source
-        directory and applies a basic hillshading algorithm before returning
-        a simple grayscale PIL image with flat ground shaded to 50% gray.
+        Uses render_tile() to do the actual rendering legwork.
 
         See http://tilestache.org/doc/#custom-providers for information
         on how the Provider object interacts with TileStache.
@@ -94,26 +92,4 @@ class Provider:
         if srs != SphericalMercator().srs:
             raise Exception('Tile projection must be spherical mercator, not "%(srs)s"' % locals())
         
-        #
-        # Find a file to work with
-        #
-        z, x, y = '%d' % coord.zoom, '%06d' % coord.column, '%06d' % coord.row
-        path = '/'.join((z, x[:3], x[3:], y[:3], y[3:])) + '.tiff'
-        path = join(self.source_dir, path)
-        
-        #
-        # Basic hill shading
-        #
-        slope, aspect = read_slope_aspect(path)
-        shaded = shade_hills(slope, aspect)
-        
-        #
-        # Flat ground to 50% gray exactly by way of an exponent.
-        #
-        flat = numpy.array([pi/2], dtype=float)
-        flat = shade_hills(flat, flat)[0]
-        exp = log(0.5) / log(flat)
-        
-        shaded = numpy.power(shaded, exp)
-        
-        return arr2img(0xFF * shaded.clip(0, 1))
+        return render_tile(self.source_dir, coord, 0)
