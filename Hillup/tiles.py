@@ -4,7 +4,7 @@ from os.path import join, exists
 
 from TileStache.Geography import SphericalMercator
 
-from PIL.Image import BICUBIC as resample
+from PIL.Image import BILINEAR as resample
 import numpy
 
 from . import arr2img, read_slope_aspect, shade_hills
