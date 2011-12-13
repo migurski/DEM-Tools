@@ -2,7 +2,7 @@
 """
 from sys import stderr
 from math import floor, log
-from os import unlink, close, write, mkdir, chmod
+from os import unlink, close, write, mkdir, chmod, makedirs
 from os.path import basename, exists, isdir, join
 from httplib import HTTPConnection
 from urlparse import urlparse
@@ -85,7 +85,7 @@ def datasource(lat, lon, source_dir):
         return None
 
     if not exists(dem_dir):
-        mkdir(dem_dir)
+        makedirs(dem_dir)
         chmod(dem_dir, 0777)
     
     assert isdir(dem_dir)
