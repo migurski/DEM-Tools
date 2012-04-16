@@ -50,7 +50,7 @@ def save_slope_aspect(slope, aspect, wkt, xform, fp, tmpdir):
         band_aspect.WriteRaster(0, 0, w, h, aspect2bytes(aspect).tostring())
         
         ds_both.FlushCache()
-	ds_both = None
+        ds_both = None # GDAL is lame about actually writing data until this object is out of scope
         fp.write(open(filename, 'r').read())
     
     finally:
