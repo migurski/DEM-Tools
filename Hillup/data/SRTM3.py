@@ -30,6 +30,18 @@ def region(lat, lon):
     if 15 <= lat and lat < 61 and -170 <= lon and lon < -40:
         return 'North_America'
     
+    elif 35 <= lat and lat < 61 and -15 <= lon and lon < 60:
+        return 'Eurasia'
+    
+    elif -10 <= lat and lat < 35 and 60 <= lon and lon < 180:
+        return 'Eurasia'
+    
+    elif -25 <= lat and lat < -10 and 110 <= lon and lon < 180:
+        return 'Australia'
+    
+    elif -45 <= lat and lat < -25 and 110 <= lon and lon < 155:
+        return 'Australia'
+    
     raise ValueError('Unknown location: %s, %s' % (lat, lon))
 
 def quads(minlon, minlat, maxlon, maxlat):
@@ -61,8 +73,17 @@ def datasource(lat, lon, source_dir):
         # we're probably outside a known region
         return None
 
-    fmt = 'http://dds.cr.usgs.gov/srtm/version2_1/SRTM3/%s/N%02dW%03d.hgt.zip'
-    url = fmt % (reg, abs(lat), abs(lon))
+    if lat < 0 and lon < 0:
+        NS, EW = 'S', 'W'
+    elif lat < 0:
+        NS, EW = 'S', 'E'
+    elif lat >= 0 and lon < 0:
+        NS, EW = 'N', 'W'
+    elif lat >= 0:
+        NS, EW = 'N', 'E'
+        
+    fmt = 'http://dds.cr.usgs.gov/srtm/version2_1/SRTM3/%s/%s%02d%s%03d.hgt.zip'
+    url = fmt % (reg, NS, abs(lat), EW, abs(lon))
     
     #
     # Create a local filepath
