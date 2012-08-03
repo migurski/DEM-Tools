@@ -4,6 +4,7 @@ from math import pi, sin, cos
 from os import unlink, close
 from itertools import product
 from tempfile import mkstemp
+from sys import modules
 
 import NED10m, NED100m, NED1km, SRTM1, SRTM3
 
@@ -81,7 +82,7 @@ class Provider:
             providers = choose_providers_ned(zoom)
 
         else:
-            raise Exception('Unknown source "%s"' % source)
+            providers = load_func_path(self.source)(zoom)
         
         #
         # Prepare information for datasets of the desired extent and projection.
@@ -278,3 +279,19 @@ def calculate_slope_aspect(elevation, xres, yres, z=1.0):
     aspect = numpy.arctan2(x, y)
     
     return slope, aspect
+
+def load_func_path(funcpath):
+    """ Load external function based on a path.
+        
+        Example funcpath: "Module.Submodule:Function".
+    """
+    modname, objname = funcpath.split(':', 1)
+
+    __import__(modname)
+    module = modules[modname]
+    _func = eval(objname, module.__dict__)
+    
+    if _func is None:
+        raise Exception('eval(%(objname)s) in %(modname)s came up None' % locals())
+
+    return _func
