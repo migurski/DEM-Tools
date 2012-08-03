@@ -44,6 +44,20 @@ def region(lat, lon):
     
     raise ValueError('Unknown location: %s, %s' % (lat, lon))
 
+def filename(lat, lon):
+    """ Return an SRTM3 filename with no extension, e.g. "N37W123".
+    """
+    if lat < 0 and lon < 0:
+        NS, EW = 'S', 'W'
+    elif lat < 0:
+        NS, EW = 'S', 'E'
+    elif lat >= 0 and lon < 0:
+        NS, EW = 'N', 'W'
+    elif lat >= 0:
+        NS, EW = 'N', 'E'
+
+    return '%s%02d%s%03d' % (NS, abs(lat), EW, abs(lon))
+
 def quads(minlon, minlat, maxlon, maxlat):
     """ Generate a list of southwest (lon, lat) for 1-degree quads of SRTM3 data.
     """
@@ -73,17 +87,8 @@ def datasource(lat, lon, source_dir):
         # we're probably outside a known region
         return None
 
-    if lat < 0 and lon < 0:
-        NS, EW = 'S', 'W'
-    elif lat < 0:
-        NS, EW = 'S', 'E'
-    elif lat >= 0 and lon < 0:
-        NS, EW = 'N', 'W'
-    elif lat >= 0:
-        NS, EW = 'N', 'E'
-        
-    fmt = 'http://dds.cr.usgs.gov/srtm/version2_1/SRTM3/%s/%s%02d%s%03d.hgt.zip'
-    url = fmt % (reg, NS, abs(lat), EW, abs(lon))
+    fmt = 'http://dds.cr.usgs.gov/srtm/version2_1/SRTM3/%s/%s.hgt.zip'
+    url = fmt % (reg, filename(lat, lon))
     
     #
     # Create a local filepath
