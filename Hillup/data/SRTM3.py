@@ -2,7 +2,7 @@
 """
 from sys import stderr
 from math import floor, log
-from os import unlink, close, write, mkdir, chmod, makedirs
+from os import unlink, close, write, chmod, makedirs
 from os.path import basename, exists, isdir, join
 from httplib import HTTPConnection
 from urlparse import urlparse

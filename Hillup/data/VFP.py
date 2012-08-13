@@ -1,6 +1,6 @@
 from sys import stderr
 from urlparse import urlparse, urljoin
-from os import unlink, close, write, mkdir, chmod, makedirs
+from os import unlink, close, write, chmod, makedirs
 from os.path import basename, exists, isdir, join
 from httplib import HTTPConnection
 from tempfile import mkstemp
