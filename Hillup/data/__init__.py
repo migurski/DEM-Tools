@@ -6,7 +6,7 @@ from itertools import product
 from tempfile import mkstemp
 from sys import modules
 
-import NED10m, NED100m, NED1km, SRTM1, SRTM3
+import NED10m, NED100m, NED1km, SRTM1, SRTM3, VFP
 
 from ModestMaps.Core import Coordinate
 from TileStache.Geography import SphericalMercator
@@ -80,6 +80,9 @@ class Provider:
         
         elif self.source == 'ned-only':
             providers = choose_providers_ned(zoom)
+
+        elif self.source == 'vfp':
+            providers = [(VFP, 1)]
 
         else:
             providers = load_func_path(self.source)(zoom)
