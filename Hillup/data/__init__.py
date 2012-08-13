@@ -100,6 +100,21 @@ class Provider:
         area_wkt = webmerc_sref.ExportToWkt()
         buffered_xform = xmin - xres, xres, 0, ymax - yres, 0, yres
         
+        def make_dataset(width, height, xform, wkt, nodata, tmpdir):
+            '''
+            '''
+            driver = gdal.GetDriverByName('GTiff')
+            handle, filename = mkstemp(dir=tmpdir, prefix='dem-tools-hillup-data-render-', suffix='.tif')
+
+            area = driver.Create(filename, width, height, 1, gdal.GDT_Float32)
+            area.SetGeoTransform(xform)
+            area.SetProjection(wkt)
+            
+            area.GetRasterBand(1).WriteArray(numpy.ones((width, height), numpy.float32) * nodata, 0, 0)
+            area.GetRasterBand(1).SetNoDataValue(nodata)
+            
+            return area
+        
         #
         # Reproject and merge DEM datasources into destination datasets.
         #
@@ -107,6 +122,10 @@ class Provider:
         driver = gdal.GetDriverByName('GTiff')
         elevation = numpy.zeros((width+2, height+2), numpy.float32)
         
+        nodata = -9999
+        
+        ds_composite = make_dataset(width+2, height+2, buffered_xform, area_wkt, nodata, self.tmpdir)
+
         for (module, proportion) in providers:
         
             cs2cs = osr.CoordinateTransformation(webmerc_sref, module.sref)
@@ -115,16 +134,12 @@ class Provider:
             maxlon, maxlat, z = cs2cs.TransformPoint(xmax, ymax)
             
             try:
-                handle, filename = mkstemp(dir=self.tmpdir, prefix='render-area-provider-', suffix='.tif')
-                close(handle)
-            
-                ds_area = driver.Create(filename, width+2, height+2, 1, gdal.GDT_Float32)
-                ds_area.SetGeoTransform(buffered_xform)
-                ds_area.SetProjection(area_wkt)
-                
+                ds_area = make_dataset(width+2, height+2, buffered_xform, area_wkt, nodata, self.tmpdir)
                 ds_args = minlon, minlat, maxlon, maxlat, self.demdir
                 
                 for ds_dem in module.datasources(*ds_args):
+                
+                    print ds_dem.GetFileList(), ds_dem.RasterCount
                 
                     # estimate the raster density across source DEM and output
                     dem_samples = (maxlon - minlon) / ds_dem.GetGeoTransform()[1]
@@ -148,13 +163,17 @@ class Provider:
                 ds_area.FlushCache()
 
             finally:
-                unlink(filename)
+                #print ds_area.GetMaskBand()
+                print ds_area.ReadAsArray()
+                unlink(ds_area.GetFileList()[0])
         
         #
         # Calculate and save slope and aspect.
         #
         
         slope, aspect = calculate_slope_aspect(elevation, xres, yres)
+
+        unlink(ds_composite.GetFileList()[0])
         
         tile_xform = xmin, xres, 0, ymax, 0, yres
         
