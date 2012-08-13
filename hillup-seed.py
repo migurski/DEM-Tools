@@ -18,7 +18,7 @@ Bounding box is given as a pair of lat/lon coordinates, e.g. "37.788 -122.349
 
 See `%prog --help` for info.""")
 
-defaults = dict(demdir='source', tiledir='out', tmpdir=None, source='vfp', bbox=(37.777, -122.352, 37.839, -122.086))
+defaults = dict(demdir='source', tiledir='out', tmpdir=None, source='worldwide', bbox=(37.777, -122.352, 37.839, -122.086))
 
 parser.set_defaults(**defaults)
 
@@ -33,7 +33,7 @@ parser.add_option('-t', '--tile-directory', dest='tiledir',
                   help='Directory for generated slope/aspect tiles, default "%(tiledir)s". This directory will be used as the "source_dir" for Hillup.tiles:Provider shaded renderings.' % defaults)
 
 parser.add_option('-s', '--source', dest='source',
-                  help='Data source for elevations. One of "srtm-ned" for SRTM and NED data, "ned-only" for US-only downsample NED, "vfp" for Viewfinder Panoramas and SRTM3, or a function path such as "Module.Submodule:Function". Default "%(source)s".' % defaults)
+                  help='Data source for elevations. One of "srtm-ned" for SRTM and NED data, "ned-only" for US-only downsample NED, "vfp" for Viewfinder Panoramas and SRTM3, "worldwide" for combined datasets (currently SRTM3 + VFP), or a function path such as "Module.Submodule:Function". Default "%(source)s".' % defaults)
 
 parser.add_option('--tmp-directory', dest='tmpdir',
                   help='Optional working directory for temporary files. Consider a ram disk for this.')
