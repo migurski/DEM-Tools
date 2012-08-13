@@ -90,6 +90,8 @@ class Provider:
         else:
             providers = load_func_path(self.source)(zoom)
         
+        assert sum([proportion for (mod, proportion) in providers]) == 1.0
+        
         #
         # Prepare information for datasets of the desired extent and projection.
         #
@@ -100,31 +102,14 @@ class Provider:
         area_wkt = webmerc_sref.ExportToWkt()
         buffered_xform = xmin - xres, xres, 0, ymax - yres, 0, yres
         
-        def make_dataset(width, height, xform, wkt, nodata, tmpdir):
-            '''
-            '''
-            driver = gdal.GetDriverByName('GTiff')
-            handle, filename = mkstemp(dir=tmpdir, prefix='dem-tools-hillup-data-render-', suffix='.tif')
-
-            area = driver.Create(filename, width, height, 1, gdal.GDT_Float32)
-            area.SetGeoTransform(xform)
-            area.SetProjection(wkt)
-            
-            area.GetRasterBand(1).WriteArray(numpy.ones((width, height), numpy.float32) * nodata, 0, 0)
-            area.GetRasterBand(1).SetNoDataValue(nodata)
-            
-            return area
-        
         #
         # Reproject and merge DEM datasources into destination datasets.
         #
         
         driver = gdal.GetDriverByName('GTiff')
-        elevation = numpy.zeros((width+2, height+2), numpy.float32)
         
-        nodata = -9999
-        
-        ds_composite = make_dataset(width+2, height+2, buffered_xform, area_wkt, nodata, self.tmpdir)
+        composite_ds = make_empty_datasource(width+2, height+2, buffered_xform, area_wkt, self.tmpdir)
+        proportion_complete = 0.
 
         for (module, proportion) in providers:
         
@@ -133,39 +118,50 @@ class Provider:
             minlon, minlat, z = cs2cs.TransformPoint(xmin, ymin)
             maxlon, maxlat, z = cs2cs.TransformPoint(xmax, ymax)
             
-            try:
-                ds_area = make_dataset(width+2, height+2, buffered_xform, area_wkt, nodata, self.tmpdir)
-                ds_args = minlon, minlat, maxlon, maxlat, self.demdir
+            #
+            # Keep a version of the composite without the
+            # current layer applied for later alpha-blending.
+            #
+            do_blending = bool(proportion_complete > 0 and proportion < 1)
+            
+            if do_blending:
+                composite_without = composite_ds.ReadAsArray()
+            
+            ds_args = minlon, minlat, maxlon, maxlat, self.demdir
+            
+            for ds_dem in module.datasources(*ds_args):
+            
+                # estimate the raster density across source DEM and output
+                dem_samples = (maxlon - minlon) / ds_dem.GetGeoTransform()[1]
+                area_pixels = (xmax - xmin) / composite_ds.GetGeoTransform()[1]
                 
-                for ds_dem in module.datasources(*ds_args):
-                
-                    print ds_dem.GetFileList(), ds_dem.RasterCount
-                
-                    # estimate the raster density across source DEM and output
-                    dem_samples = (maxlon - minlon) / ds_dem.GetGeoTransform()[1]
-                    area_pixels = (xmax - xmin) / ds_area.GetGeoTransform()[1]
-                    
-                    if dem_samples > area_pixels:
-                        # cubic looks better squeezing down
-                        resample = gdal.GRA_Cubic
-                    else:
-                        # cubic spline looks better stretching out
-                        resample = gdal.GRA_CubicSpline
-
-                    gdal.ReprojectImage(ds_dem, ds_area, ds_dem.GetProjection(), ds_area.GetProjection(), resample)
-                    ds_dem.FlushCache()
-                
-                if proportion == 1:
-                    elevation = ds_area.ReadAsArray()
+                if dem_samples > area_pixels:
+                    # cubic looks better squeezing down
+                    resample = gdal.GRA_Cubic
                 else:
-                    elevation += ds_area.ReadAsArray() * proportion
+                    # cubic spline looks better stretching out
+                    resample = gdal.GRA_CubicSpline
 
-                ds_area.FlushCache()
+                gdal.ReprojectImage(ds_dem, composite_ds, ds_dem.GetProjection(), composite_ds.GetProjection(), resample)
+                ds_dem.FlushCache()
+            
+            #
+            # Perform alpha-blending if needed.
+            #
+            if do_blending:
+                proportion_with = proportion / (proportion_complete + proportion)
+                proportion_without = 1 - proportion_with
+                
+                composite_with = composite_ds.ReadAsArray() * proportion_with
+                composite_with += composite_without * proportion_without
 
-            finally:
-                #print ds_area.GetMaskBand()
-                print ds_area.ReadAsArray()
-                unlink(ds_area.GetFileList()[0])
+                composite_ds.GetRasterBand(1).WriteArray(composite_with, 0, 0)
+            
+            proportion_complete += proportion
+                
+        elevation = composite_ds.ReadAsArray()
+
+        unlink(composite_ds.GetFileList()[0])
         
         #
         # Calculate and save slope and aspect.
@@ -173,8 +169,6 @@ class Provider:
         
         slope, aspect = calculate_slope_aspect(elevation, xres, yres)
 
-        unlink(ds_composite.GetFileList()[0])
-        
         tile_xform = xmin, xres, 0, ymax, 0, yres
         
         return SlopeAndAspect(self.tmpdir, slope, aspect, area_wkt, tile_xform)
@@ -272,6 +266,21 @@ def choose_providers_ned(zoom):
     proportion = 1. - (zoom - float(bottom.ideal_zoom)) / difference
 
     return [(bottom, proportion), (top, 1 - proportion)]
+
+def make_empty_datasource(width, height, xform, wkt, tmpdir):
+    '''
+    '''
+    driver = gdal.GetDriverByName('GTiff')
+    handle, filename = mkstemp(dir=tmpdir, prefix='dem-tools-hillup-data-render-', suffix='.tif')
+
+    ds = driver.Create(filename, width, height, 1, gdal.GDT_Float32)
+    ds.SetGeoTransform(xform)
+    ds.SetProjection(wkt)
+    
+    ds.GetRasterBand(1).WriteArray(numpy.ones((width, height), numpy.float32) * -9999, 0, 0)
+    ds.GetRasterBand(1).SetNoDataValue(-9999)
+    
+    return ds
 
 def calculate_slope_aspect(elevation, xres, yres, z=1.0):
     """ Return a pair of arrays 2 pixels smaller than the input elevation array.
