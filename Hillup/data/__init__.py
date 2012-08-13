@@ -6,7 +6,7 @@ from itertools import product
 from tempfile import mkstemp
 from sys import modules
 
-import NED10m, NED100m, NED1km, SRTM1, SRTM3, VFP
+import NED10m, NED100m, NED1km, SRTM1, SRTM3, VFP, Worldwide
 
 from ModestMaps.Core import Coordinate
 from TileStache.Geography import SphericalMercator
@@ -83,6 +83,9 @@ class Provider:
 
         elif self.source == 'vfp':
             providers = [(VFP, 1)]
+
+        elif self.source == 'worldwide':
+            providers = [(Worldwide, 1)]
 
         else:
             providers = load_func_path(self.source)(zoom)
