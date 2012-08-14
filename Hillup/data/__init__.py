@@ -143,7 +143,7 @@ class Provider:
                     resample = gdal.GRA_CubicSpline
 
                 gdal.ReprojectImage(ds_dem, composite_ds, ds_dem.GetProjection(), composite_ds.GetProjection(), resample)
-                ds_dem.FlushCache()
+                ds_dem = None
             
             #
             # Perform alpha-blending if needed.
@@ -162,6 +162,7 @@ class Provider:
         elevation = composite_ds.ReadAsArray()
 
         unlink(composite_ds.GetFileList()[0])
+        composite_ds = None
         
         #
         # Calculate and save slope and aspect.
@@ -272,6 +273,7 @@ def make_empty_datasource(width, height, xform, wkt, tmpdir):
     '''
     driver = gdal.GetDriverByName('GTiff')
     handle, filename = mkstemp(dir=tmpdir, prefix='dem-tools-hillup-data-render-', suffix='.tif')
+    close(handle)
 
     ds = driver.Create(filename, width, height, 1, gdal.GDT_Float32)
     ds.SetGeoTransform(xform)
