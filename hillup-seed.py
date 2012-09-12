@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
 """
+from sys import path
 from optparse import OptionParser
 
 from TileStache import getTile
@@ -70,6 +71,8 @@ def generateCoordinates(ul, lr, zooms, padding):
                 offset += 1
 
 if __name__ == '__main__':
+
+    path.insert(0, '.')
 
     options, zooms = parser.parse_args()
 
