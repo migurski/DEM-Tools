@@ -1,4 +1,55 @@
 """ Starting point for DEM retrieval utilities.
+
+>>> region(32, -65)
+'North_America'
+
+>>> region(40, -100)
+'North_America'
+
+>>> region(51, 17)
+'Eurasia'
+
+>>> region(20, 100)
+'Eurasia'
+
+>>> region(55, -175)
+'Eurasia'
+
+>>> region(0, -160)
+'Eurasia'
+
+>>> region(-13, 96)
+'Eurasia'
+
+>>> region(-32, 159)
+'Australia'
+
+>>> region(-20, 63)
+'Africa'
+
+>>> region(39, -32)
+'Africa'
+
+>>> region(0, 0)
+'Africa'
+
+>>> region(-30, 167)
+'Islands'
+
+>>> region(-38, 77)
+'Islands'
+
+>>> region(-8, -15)
+'Islands'
+
+>>> region(-55, -35)
+'Islands'
+
+>>> region(20, -155)
+'Islands'
+
+>>> region(-45, -180)
+'Islands'
 """
 from sys import stderr
 from math import floor, log
@@ -27,19 +78,55 @@ def region(lat, lon):
         Map of regions:
         http://dds.cr.usgs.gov/srtm/version2_1/Documentation/Continent_def.gif
     """
+    if -45 <= lat and lat < -25 and -180 <= lon and lon < -175:
+        # southern hemisphere, near dateline
+        return 'Islands'
+    
+    elif 15 <= lat and lat < 30 and -180 <= lon and lon < -150:
+        # around hawaii
+        return 'Islands'
+    
+    elif -60 <= lat and lat < -35 and -40 <= lon and lon < 80:
+        # south atlantic ocean
+        return 'Islands'
+    
+    elif -35 <= lat and lat < -5 and -30 <= lon and lon < -5:
+        # mid-atlantic, between africa and south america
+        return 'Islands'
+    
+    elif -60 <= lat and lat < -40 and 155 <= lon and lon < 180:
+        # southern half of new zealand
+        return 'Islands'
+    
+    elif -40 <= lat and lat < -25 and 165 <= lon and lon < 180:
+        # northern half of new zealand
+        return 'Islands'
+    
     if 15 <= lat and lat < 61 and -170 <= lon and lon < -40:
         return 'North_America'
     
-    elif 35 <= lat and lat < 61 and -15 <= lon and lon < 60:
+    elif -60 <= lat and lat < 15 and -95 <= lon and lon < -30:
+        return 'South_America'
+    
+    elif -35 <= lat and lat < 35 and -30 <= lon and lon < 60:
+        return 'Africa'
+    
+    elif -20 <= lat and lat < -15 and 60 <= lon and lon < 65:
+        return 'Africa'
+    
+    elif 35 <= lat and lat < 40 and -35 <= lon and lon < -20:
+        return 'Africa'
+    
+    elif -10 <= lat and lat < 61 and -15 <= lon and lon < 180:
         return 'Eurasia'
     
-    elif -10 <= lat and lat < 35 and 60 <= lon and lon < 180:
+    elif -10 <= lat and lat < 61 and -180 <= lon and lon < -135:
         return 'Eurasia'
     
-    elif -25 <= lat and lat < -10 and 110 <= lon and lon < 180:
-        return 'Australia'
+    elif -15 <= lat and lat < -10 and 95 <= lon and lon < 100:
+        return 'Eurasia'
     
-    elif -45 <= lat and lat < -25 and 110 <= lon and lon < 155:
+    elif -45 <= lat and lat < -10 and 110 <= lon and lon < 180:
         return 'Australia'
     
     raise ValueError('Unknown location: %s, %s' % (lat, lon))
@@ -165,3 +252,8 @@ def datasources(minlon, minlat, maxlon, maxlat, source_dir):
     lonlats = quads(minlon, minlat, maxlon, maxlat)
     sources = [datasource(lat, lon, source_dir) for (lon, lat) in lonlats]
     return [ds for ds in sources if ds]
+
+if __name__ == '__main__':
+
+    import doctest
+    doctest.testmod()
