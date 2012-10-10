@@ -2,6 +2,7 @@
 """
 """
 from sys import path
+from os.path import exists
 from optparse import OptionParser
 
 from TileStache import getTile
@@ -32,6 +33,9 @@ parser.add_option('-d', '--dem-directory', dest='demdir',
 
 parser.add_option('-t', '--tile-directory', dest='tiledir',
                   help='Directory for generated slope/aspect tiles, default "%(tiledir)s". This directory will be used as the "source_dir" for Hillup.tiles:Provider shaded renderings.' % defaults)
+
+parser.add_option('--tile-list', dest='tile_list',
+                  help='Optional file of tile coordinates, a simple text list of Z/X/Y coordinates. Overrides --bbox.')
 
 parser.add_option('-s', '--source', dest='source',
                   help='Data source for elevations. One of "srtm-ned" for SRTM and NED data, "ned-only" for US-only downsample NED, "vfp" for Viewfinder Panoramas and SRTM3, "worldwide" for combined datasets (currently SRTM3 + VFP), or a function path such as "Module.Submodule:Function". Default "%(source)s".' % defaults)
@@ -75,28 +79,38 @@ if __name__ == '__main__':
     path.insert(0, '.')
 
     options, zooms = parser.parse_args()
-
-    lat1, lon1, lat2, lon2 = options.bbox
-    south, west = min(lat1, lat2), min(lon1, lon2)
-    north, east = max(lat1, lat2), max(lon1, lon2)
-
-    northwest = Location(north, west)
-    southeast = Location(south, east)
     
-    webmerc = SphericalMercator()
+    if options.tile_list and exists(options.tile_list):
 
-    ul = webmerc.locationCoordinate(northwest)
-    lr = webmerc.locationCoordinate(southeast)
-
-    for (i, zoom) in enumerate(zooms):
-        if not zoom.isdigit():
-            raise KnownUnknown('"%s" is not a valid numeric zoom level.' % zoom)
-
-        zooms[i] = int(zoom)
+        # read out zooms, columns, rows
+        zxys = [line.strip().split('/') for line in open(options.tile_list)]
+        coords = [Coordinate(*map(int, (y, x, z))) for (z, x, y) in zxys]
+        tiles = [(i, len(coords), coord) for (i, coord) in enumerate(coords)]
+    
+    else:
+        lat1, lon1, lat2, lon2 = options.bbox
+        south, west = min(lat1, lat2), min(lon1, lon2)
+        north, east = max(lat1, lat2), max(lon1, lon2)
+    
+        northwest = Location(north, west)
+        southeast = Location(south, east)
+        
+        webmerc = SphericalMercator()
+    
+        ul = webmerc.locationCoordinate(northwest)
+        lr = webmerc.locationCoordinate(southeast)
+    
+        for (i, zoom) in enumerate(zooms):
+            if not zoom.isdigit():
+                raise KnownUnknown('"%s" is not a valid numeric zoom level.' % zoom)
+    
+            zooms[i] = int(zoom)
+        
+        tiles = generateCoordinates(ul, lr, zooms, 0)
     
     layer = SeedingLayer(options.demdir, options.tiledir, options.tmpdir, options.source)
 
-    for (offset, count, coord) in generateCoordinates(ul, lr, zooms, 0):
+    for (offset, count, coord) in tiles:
         
         mimetype, content = getTile(layer, coord, 'TIFF', True)
 
