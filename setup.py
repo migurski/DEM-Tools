@@ -2,14 +2,14 @@
 
 from distutils.core import setup
 
-version = open('VERSION', 'r').read().strip()
+version = '0.7.1'
 
 setup(name='Hillup',
       version=version,
       description='Retrieves and prepares digital elevation data for rendering as map tiles.',
       author='Michal Migurski',
       author_email='mike@stamen.com',
-      url='https://github.com/migurski',
+      url='https://github.com/migurski/DEM-Tools',
       requires=['ModestMaps','PIL','numpy'],
       packages=['Hillup', 'Hillup.data'],
       scripts=['hillup-seed.py'],
