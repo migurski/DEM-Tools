@@ -116,8 +116,8 @@ class Provider:
             cs2cs = osr.CoordinateTransformation(webmerc_sref, module.sref)
             
             # get a lat/lon bbox buffered by one pixel on all sides
-            minlon, minlat, z = cs2cs.TransformPoint(xmin - xres, ymin - yres)
-            maxlon, maxlat, z = cs2cs.TransformPoint(xmax + xres, ymax + yres)
+            minlon, minlat, z = cs2cs.TransformPoint(xmin - xres, ymin + yres)
+            maxlon, maxlat, z = cs2cs.TransformPoint(xmax + xres, ymax - yres)
             
             #
             # Keep a version of the composite without the
