@@ -20,7 +20,7 @@ Bounding box is given as a pair of lat/lon coordinates, e.g. "37.788 -122.349
 
 See `%prog --help` for info.""")
 
-defaults = dict(demdir='source', tiledir='out', tmpdir=None, source='worldwide', bbox=(37.777, -122.352, 37.839, -122.086))
+defaults = dict(demdir='source', tiledir='out', tmpdir=None, source='worldwide', bbox=(37.777, -122.352, 37.839, -122.086), size=256)
 
 parser.set_defaults(**defaults)
 
@@ -42,6 +42,9 @@ parser.add_option('-s', '--source', dest='source',
 
 parser.add_option('--tmp-directory', dest='tmpdir',
                   help='Optional working directory for temporary files. Consider a ram disk for this.')
+
+parser.add_option('--tile-size', dest='size', type='int',
+                  help='Optional size for rendered tiles, default %(size)s.' % defaults)
 
 def generateCoordinates(ul, lr, zooms, padding):
     """ Generate a stream of (offset, count, coordinate) tuples for seeding.
@@ -108,7 +111,7 @@ if __name__ == '__main__':
         
         tiles = generateCoordinates(ul, lr, zooms, 0)
     
-    layer = SeedingLayer(options.demdir, options.tiledir, options.tmpdir, options.source)
+    layer = SeedingLayer(options.demdir, options.tiledir, options.tmpdir, options.source, options.size)
 
     for (offset, count, coord) in tiles:
         

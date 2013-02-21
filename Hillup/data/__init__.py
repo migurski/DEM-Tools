@@ -39,12 +39,12 @@ class SeedingLayer (Layer):
     
         Intended for use in hillup-seed.py script for preparing a tile directory.
     """
-    def __init__(self, demdir, tiledir, tmpdir, source):
+    def __init__(self, demdir, tiledir, tmpdir, source, size):
         """
         """
         cache = Disk(tiledir, dirs='safe')
         config = Configuration(cache, '.')
-        Layer.__init__(self, config, SphericalMercator(), Metatile())
+        Layer.__init__(self, config, SphericalMercator(), Metatile(), tile_height=size)
         
         self.provider = Provider(self, demdir, tmpdir, source)
 
