@@ -128,4 +128,9 @@ class Provider:
         if srs != SphericalMercator().srs:
             raise Exception('Tile projection must be spherical mercator, not "%(srs)s"' % locals())
         
-        return render_tile(self.source_dir, coord, 0)
+        rendered = render_tile(self.source_dir, coord, 0)
+
+        if rendered.size != (width, height):
+            rendered = rendered.resize((width, height), resample)
+
+        return rendered
