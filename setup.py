@@ -2,7 +2,7 @@
 
 from distutils.core import setup
 
-version = '0.7.3'
+version = open('VERSION').read().strip()
 
 setup(name='Hillup',
       version=version,
