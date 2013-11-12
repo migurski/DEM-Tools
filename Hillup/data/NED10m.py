@@ -44,11 +44,11 @@ def datasource(lat, lon, source_dir):
         If it doesn't already exist locally in source_dir, grab a new one.
     """
     #
-    # Create a URL - tdds.cr.usgs.gov looks to be a redirect from
+    # Create a URL - tdds3.cr.usgs.gov looks to be a redirect from
     # http://gisdata.usgs.gov/TDDS/DownloadFile.php?TYPE=ned3f_zip&FNAME=nxxwxx.zip
     #
     # FIXME for southern/western hemispheres
-    fmt = 'http://tdds.cr.usgs.gov/ned/13arcsec/float/float_zips/n%02dw%03d.zip'
+    fmt = 'http://tdds3.cr.usgs.gov/Ortho9/ned/ned_13/float/n%02dw%03d.zip'
     url = fmt % (abs(lat), abs(lon))
     
     #
